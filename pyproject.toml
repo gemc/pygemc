@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pygemc"
+dynamic = ["version"]
+description = "Python API for GEMC geometry definition and output analysis"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Maurizio Ungaro", email = "maureeungaro@gmail.com" }]
+keywords = ["geant4", "simulation", "detector", "physics", "gemc"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy",
+    "vtk",
+    "pyvista",
+    "pyvistaqt",
+    "pyqt6",
+    "pandas",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+root = ["uproot", "awkward"]
+dev  = ["pytest", "pytest-cov", "ruff"]
+
+[project.scripts]
+gemc-analyzer       = "pygemc.analyzer.cli:main"
+gemc-system-template = "pygemc.api.system_template:main"
+
+[project.urls]
+Homepage   = "https://gemc.github.io/home/"
+Repository = "https://github.com/gemc/pygemc"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pygemc"]
