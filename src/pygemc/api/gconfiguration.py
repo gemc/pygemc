@@ -40,24 +40,33 @@ def _is_jupyter() -> bool:
 
 _in_jupyter = _is_jupyter()
 
-has_pyvista: bool = False
-pv: Optional[object] = None
-BackgroundPlotterCls = None
+# Pyvista/numpy are loaded on first use — not at module import time.
+# This keeps CLI tools (gemc-system-template) and headless CI import-free of Qt/VTK.
+_pv = None
+_np = None
+_BackgroundPlotterCls = None
+_pyvista_loaded = False
 
-try:
-	import pyvista as _pv
-	import numpy as np
 
-	has_pyvista = True
-	pv = _pv
+def _try_import_pyvista() -> bool:
+	"""Load pyvista, numpy, and pyvistaqt once. Returns True if pyvista is available."""
+	global _pv, _np, _BackgroundPlotterCls, _pyvista_loaded
+	if _pyvista_loaded:
+		return _pv is not None
+	_pyvista_loaded = True
 	try:
-		from pyvistaqt import BackgroundPlotter as _BackgroundPlotter
-
-		BackgroundPlotterCls = _BackgroundPlotter
+		import pyvista as _pv_mod
+		import numpy as _np_mod
+		_pv = _pv_mod
+		_np = _np_mod
+		try:
+			from pyvistaqt import BackgroundPlotter as _bp
+			_BackgroundPlotterCls = _bp
+		except ImportError:
+			pass
 	except ImportError:
-		BackgroundPlotterCls = None
-except ImportError:
-	pass
+		pass
+	return _pv is not None
 
 
 def get_arguments(argv=None):
@@ -156,12 +165,14 @@ class GConfiguration:
 		else:
 			wants_pyvista = enable_pyvista
 
-		if wants_pyvista and not has_pyvista:
+		if wants_pyvista:
+			_try_import_pyvista()
+		if wants_pyvista and _pv is None:
 			print(f"{GColors.RED}Error: pyvista requested but not installed. Exiting.{GColors.END}")
 			sys.exit(1)
 
-		self.use_pyvista = wants_pyvista and has_pyvista
-		self.pv = pv if self.use_pyvista else None
+		self.use_pyvista = wants_pyvista and (_pv is not None)
+		self.pv = _pv if self.use_pyvista else None
 
 		# Decide whether to use BackgroundPlotter:
 		#   - programmatic use_background_plotter overrides CLI (True/False)
@@ -189,8 +200,8 @@ class GConfiguration:
 			return None
 
 		if self._plotter is None:
-			if self.use_background_plotter and BackgroundPlotterCls is not None:
-				self._plotter = BackgroundPlotterCls(show=True)
+			if self.use_background_plotter and _BackgroundPlotterCls is not None:
+				self._plotter = _BackgroundPlotterCls(show=True)
 			else:
 				if _in_jupyter:
 					self._plotter = self.pv.Plotter(
@@ -537,7 +548,7 @@ class GConfiguration:
 			return None
 
 		vals = (xmin, xmax, ymin, ymax, zmin, zmax)
-		if any(not np.isfinite(v) for v in vals):
+		if any(not _np.isfinite(v) for v in vals):
 			return None
 
 		dx = xmax - xmin
@@ -547,19 +558,19 @@ class GConfiguration:
 		if dx <= 0 and dy <= 0 and dz <= 0:
 			return None
 
-		center = np.array([
+		center = _np.array([
 			0.5 * (xmin + xmax),
 			0.5 * (ymin + ymax),
 			0.5 * (zmin + zmax),
 		])
 
-		scene_len = np.linalg.norm([dx, dy, dz])
+		scene_len = _np.linalg.norm([dx, dy, dz])
 		if scene_len <= 0:
 			scene_len = max(dx, dy, dz, 1.0)
 
 		# View from +X toward the geometry center.
 		# With this view_up, +Z goes left-to-right on screen.
-		direction = np.array([1.0, 0.0, 0.0])
+		direction = _np.array([1.0, 0.0, 0.0])
 
 		# Larger distance_scale = more zoomed out
 		distance = distance_scale * scene_len
