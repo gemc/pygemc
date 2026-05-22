@@ -54,9 +54,9 @@ try:
 		from pyvistaqt import BackgroundPlotter as _BackgroundPlotter
 
 		BackgroundPlotterCls = _BackgroundPlotter
-	except ModuleNotFoundError:
+	except ImportError:
 		BackgroundPlotterCls = None
-except ModuleNotFoundError:
+except ImportError:
 	pass
 
 
