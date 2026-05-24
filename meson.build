@@ -14,11 +14,21 @@ message('Creating Python virtual environment at: ' + venv_dir)
 run_command(python3, '-m', 'venv', venv_dir, check: true)
 
 message('Installing pygemc into the virtual environment...')
-# Non-editable + --no-deps: works with any pip version and avoids downloading
-# vtk/pyvista/pyqt6 (~200 MB) at configure time.  Those heavy packages are
-# installed into the prefix venv at install time by ci/install_python_env.py.
-run_command(venv_dir / 'bin' / 'python3', '-m', 'pip', 'install', '--no-deps',
-            meson.current_source_dir(), check: true)
+# Pre-install the build backend so pip can use --no-build-isolation below,
+# avoiding a second PyPI fetch inside the isolated build environment.
+run_command(venv_dir / 'bin' / 'python3', '-m', 'pip', 'install',
+            'hatchling', 'hatch-vcs', check: false)
+
+# --no-deps: avoids downloading vtk/pyvista/pyqt6 (~200 MB) at configure time;
+# those are installed into the prefix venv at install time by ci/install_python_env.py.
+# --no-build-isolation: uses the hatchling we just installed instead of letting
+# pip create yet another isolated venv that would need a fresh PyPI download.
+_r = run_command(venv_dir / 'bin' / 'python3', '-m', 'pip', 'install',
+                 '--no-deps', '--no-build-isolation',
+                 meson.current_source_dir(), check: false)
+if _r.returncode() != 0
+  error('pip install pygemc failed:\n' + _r.stdout() + _r.stderr())
+endif
 run_command(venv_dir / 'bin' / 'python3', '-m', 'pip', 'install',
             'numpy', 'pandas', 'matplotlib', 'pyyaml', check: false)
 
