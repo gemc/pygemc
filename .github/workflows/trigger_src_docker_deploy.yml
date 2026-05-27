@@ -1,4 +1,4 @@
-name: Trigger src docker deploy and test
+name: Trigger gemc deploy
 
 # Fires the Deploy and Test workflow in gemc/src whenever main is pushed.
 # Requires a repository secret named GEMC_SRC_PAT that holds a GitHub Personal
