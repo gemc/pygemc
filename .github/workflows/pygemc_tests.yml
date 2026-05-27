@@ -1,4 +1,4 @@
-name: CI
+name: pygemc tests
 
 on:
   push:
