@@ -1,6 +1,6 @@
-name: Trigger src dev release
+name: Trigger src docker deploy and test
 
-# Fires the Nightly Dev Release workflow in gemc/src whenever main is pushed.
+# Fires the Deploy and Test workflow in gemc/src whenever main is pushed.
 # Requires a repository secret named GEMC_SRC_PAT that holds a GitHub Personal
 # Access Token with the `workflow` scope granted on the gemc/src repository.
 
@@ -9,8 +9,8 @@ on:
     branches: ["main"]
 
 jobs:
-  trigger-dev-release:
-    name: Dispatch dev_release.yml in gemc/src
+  trigger-docker-deploy:
+    name: Dispatch dockers_deploy_and_test.yml in gemc/src
     runs-on: ubuntu-latest
 
     steps:
@@ -20,5 +20,5 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GEMC_SRC_PAT }}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/gemc/src/actions/workflows/dev_release.yml/dispatches \
+            https://api.github.com/repos/gemc/src/actions/workflows/dockers_deploy_and_test.yml/dispatches \
             -d '{"ref":"main"}'
