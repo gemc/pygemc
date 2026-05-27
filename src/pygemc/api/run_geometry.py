@@ -2,10 +2,13 @@ import importlib.util
 import sys
 import os
 import pyvista as pv
+import vtk
 
 def run_geometry(script, args=None, db="gemc.db"):
     if os.path.exists(db):
         os.remove(db)
+
+    vtk.vtkObject.GlobalWarningDisplayOff()
 
     pv.set_jupyter_backend("trame")
     pv.global_theme.trame.default_mode = "local"
