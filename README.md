@@ -1,139 +1,254 @@
 # pygemc
-Python API for GEMC geometry definition and output analysis.
 
----
+[![Tests][tests-badge]][tests]
+[![Python][python-badge]][pyproject]
+[![License: MIT][license-badge]][pyproject]
+[![GEMC documentation][docs-badge]][docs]
 
-## Setup
+`pygemc` is the Python API used by [GEMC](https://github.com/gemc/src) to define detector geometry, materials, optical properties, mirrors, geometry variations, and lightweight output-analysis workflows. It lets users build GEMC databases with Python scripts, preview geometry with PyVista, and inspect GEMC CSV or ROOT output without writing C++.
 
-Create and activate a virtual environment, then install pygemc in editable mode
-(editable means changes to the source are immediately reflected — no reinstall needed):
+The package is installed as part of the GEMC source build and can also be developed as a standalone Python project.
+
+## Features
+
+- Python classes for GEMC geometry and material databases
+- `GVolume` helpers for common Geant4 solids such as boxes, tubes, cones, and trapezoids
+- `GMaterial` helpers for chemical formulas, fractional-mass mixtures, and optical/scintillation properties
+- `GConfiguration` run, variation, factory, SQLite, ASCII, and PyVista configuration handling
+- `autogeometry()` convenience setup for detector scripts
+- SQLite and ASCII database output
+- PyVista rendering, interactive Qt display, and VTK.js `.vtksz` export for geometry inspection and documentation
+- `gemc-system-template` CLI for generating ready-to-run detector systems
+- Python code snippets for supported Geant4 solid constructors
+- `gemc-analyzer` CLI for summarizing and plotting GEMC CSV or ROOT output
+- Unit conversion helpers for length, angle, time, and energy strings
+- Pytest suite that does not require a compiled `gemc` binary
+
+## Installation
+
+### Standalone Development Install
 
 ```shell
-python3 -m venv ~/venv/pygemc          # create (once)
-source ~/venv/pygemc/bin/activate      # activate (every new terminal)
-pip install -e /path/to/pygemc         # install pygemc + all dependencies
+python3 -m venv ~/venv/pygemc
+source ~/venv/pygemc/bin/activate
+pip install -e ".[dev]"
 ```
 
----
-
-## Running the tests
+Optional ROOT-file analysis dependencies:
 
 ```shell
-pytest                         # run all tests
-pytest tests/test_cli.py       # only CLI tests (fast, ~2s)
-pytest tests/test_geometry.py  # only geometry-building tests (~65s)
-pytest -v                      # verbose: print each test name as it runs
-pytest -k "G4Box"              # only tests whose name contains "G4Box"
-pytest -k "sqlite"             # only sqlite-format tests
+pip install -e ".[dev,root]"
 ```
 
-The tests only require Python and pygemc — no Geant4 or gemc binary needed.
+The package requires Python 3.10 or newer and depends on NumPy, VTK, PyVista, PyVistaQt, PyQt6, pandas, and matplotlib.
 
----
+### Installed with GEMC
 
-## How the tests work
+When GEMC is built from source, the parent Meson project installs `pygemc` into the GEMC Python environment. After adding the GEMC Python environment to `PATH`, the commands below are available:
 
-### pytest basics
+```shell
+gemc-system-template --help
+gemc-analyzer --help
+```
 
-pytest discovers test files automatically (any file named `test_*.py`) and runs
-any function whose name starts with `test_`. A test passes if it returns without
-raising an exception, and fails if it raises one (including `AssertionError` from
-a failed `assert` statement).
+## Quickstart
 
-### `@pytest.mark.parametrize` — running one test with many inputs
+Create a detector template:
 
-Instead of writing a separate test function for every Geant4 solid type, we write
-one function and tell pytest to call it once per solid:
+```shell
+gemc-system-template -s counter
+cd counter
+./counter.py
+```
+
+The generated system contains:
+
+| File | Purpose |
+| --- | --- |
+| `counter.py` | Main geometry-builder script |
+| `geometry.py` | Example volumes, including a flux detector |
+| `materials.py` | Example methane-gas material |
+| `counter.yaml` | GEMC steering card |
+| `README.md` | Placeholder notes for the generated detector |
+
+Run with PyVista visualization:
+
+```shell
+./counter.py -pv
+```
+
+Export a VTK.js scene:
+
+```shell
+./counter.py -pvvtk counter -pvz 0.25
+```
+
+Run the generated simulation with GEMC when the compiled `gemc` executable is available:
+
+```shell
+gemc counter.yaml
+```
+
+Analyze output:
+
+```shell
+gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50
+```
+
+## Geometry API
+
+Typical geometry scripts create a configuration and publish volumes/materials to it:
 
 ```python
-@pytest.mark.parametrize("solid", ["G4Box", "G4Tubs", "G4Cons"])
-def test_show_template_code(solid):
-    run_cli("-gv", solid)
+from pygemc import GMaterial, GVolume, autogeometry
+
+cfg = autogeometry("examples", "counter")
+
+gas = GMaterial("methaneGas")
+gas.description = "methane gas CH4 0.000667 g/cm3"
+gas.density = 0.000667
+gas.addNAtoms("C", 1)
+gas.addNAtoms("H", 4)
+gas.publish(cfg)
+
+flux = GVolume("flux_box")
+flux.description = "air flux box"
+flux.make_box(40.0, 40.0, 2.0)
+flux.set_position(0, 0, 100)
+flux.material = "G4_AIR"
+flux.color = "3399FF"
+flux.style = 1
+flux.digitization = "flux"
+flux.set_identifier("box", 2)
+flux.publish(cfg)
 ```
 
-pytest expands this into three independent tests:
-- `test_show_template_code[G4Box]`
-- `test_show_template_code[G4Tubs]`
-- `test_show_template_code[G4Cons]`
+Common command-line options accepted by geometry scripts:
 
-You can also parametrize over pairs of values:
+| Option | Purpose |
+| --- | --- |
+| `-f`, `--factory` | Select `sqlite` or `ascii` output |
+| `-v`, `--variation` | Select the geometry variation |
+| `-r`, `--run` | Select the run number |
+| `-sql`, `--dbhost` | Select the SQLite file path |
+| `-pv` | Show a PyVista window |
+| `-pvb` | Show a PyVistaQt background plotter |
+| `-pvvtk` | Export a VTK.js `.vtksz` scene |
+| `-pvz` | Set the VTK.js export zoom |
 
-```python
-@pytest.mark.parametrize("solid,pars", SOLIDS.items())
-def test_show_template_code_with_parameters(solid, pars):
-    ...
+## PyVista Visualization
+
+PyVista support is central to `pygemc`: geometry scripts can display the detector as they build it, open an interactive Qt viewer, or export a `.vtksz` scene that can be published in documentation.
+
+| B1 | B2 |
+| --- | --- |
+| <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/b1/b1.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/b1/geometry.png" alt="B1 PyVista geometry" width="200" height="200"></a> | <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/b2/b2.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/b2/geometry.png" alt="B2 PyVista geometry" width="200" height="200"></a> |
+| Materials | Simple Flux |
+| <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/materials/material.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/materials/geometry.png" alt="Materials PyVista geometry" width="200" height="200"></a> | <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/simple_flux/simple_flux.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/simple_flux/geometry.png" alt="Simple Flux PyVista geometry" width="200" height="200"></a> |
+
+Open the linked interactive PyVista scenes generated from the GEMC examples.
+
+GitHub README pages cannot embed `.vtksz` files directly, so the preview image links to the hosted VTK.js viewer.
+
+## Command-Line Tools
+
+### `gemc-system-template`
+
+Generate a detector skeleton:
+
+```shell
+gemc-system-template -s counter
 ```
 
-This is equivalent to one test per key-value pair in the `SOLIDS` dictionary.
+List supported solid snippets:
 
-Stacking two `@pytest.mark.parametrize` decorators produces the Cartesian product —
-every combination:
-
-```python
-@pytest.mark.parametrize("solid", SOLIDS)
-@pytest.mark.parametrize("fmt", ["ascii", "sqlite"])
-def test_build_geometry_per_solid(tmp_path, solid, fmt):
-    ...
+```shell
+gemc-system-template -sl
 ```
 
-This generates 6 solids × 2 formats = 12 tests.
+Print a volume-construction snippet:
 
-### `tmp_path` — automatic temporary directories
-
-`tmp_path` is a built-in pytest fixture: when you declare it as a function argument,
-pytest automatically creates a fresh temporary directory for that test and passes it
-in. The directory is deleted after the test finishes. This means tests never
-interfere with each other and leave no files behind.
-
-```python
-def test_create_system(tmp_path):
-    run_cli("-s", "test", cwd=tmp_path)   # files are created inside tmp_path
-    assert (tmp_path / "test" / "test.py").exists()
+```shell
+gemc-system-template -gv G4Box
 ```
 
-### `conftest.py` — shared setup
+Write a snippet to a file:
 
-`conftest.py` is a special pytest file that is loaded automatically before any tests
-run. It is used to define:
-
-- **Shared helpers** (`run_cli`, `run_python`) so every test file can call them
-  without repeating the `subprocess.run` boilerplate.
-- **Shared data** (`SOLIDS` dictionary) that both `test_cli.py` and `test_geometry.py`
-  use, keeping the solid list in one place.
-- **Session fixtures** (`require_cli`) that run once for the whole test session —
-  here it checks that `gemc-system-template` is installed and skips all tests with
-  a clear message if it is not, rather than failing with a confusing error.
-
-### `@pytest.fixture` — reusable setup code
-
-A function decorated with `@pytest.fixture` is called by pytest automatically when
-a test declares it as an argument. `tmp_path` above is a built-in example. The
-`require_cli` fixture in `conftest.py` uses `scope="session"` and `autouse=True`,
-which means: run it once per session, for every test, without tests having to
-declare it explicitly.
-
----
-
-## Test structure
-
-```
-tests/
-  conftest.py        shared helpers, SOLIDS data, CLI availability check
-  test_cli.py        gemc-system-template CLI: help, solid listing, code display
-  test_geometry.py   geometry building: create system, build sqlite/ascii databases
+```shell
+gemc-system-template -gv G4Tubs -write_to geometry.py -geo_sub build_tube
 ```
 
-### What is tested
+### `gemc-analyzer`
 
-| Test file | What it checks |
-|---|---|
-| `test_cli.py` | CLI exits 0 for help, solid listing, and code display for all solid types |
-| `test_geometry.py` | System template creates expected files; geometry Python scripts produce databases |
+Summarize an output file:
 
-The geometry tests mirror the priority-ordered sequence used in the src meson build:
-1. Create a system with `gemc-system-template -s <name>`
-2. Run the generated `<name>.py -f <format>` to build the geometry database
-3. Verify the output file exists
+```shell
+gemc-analyzer counter_t0_digitized.csv --kind csv
+```
 
-The gemc binary tests (running `gemc <name>.yaml`) are not included here — those
-require the compiled C++ binary and live in the src meson build.
+Plot a variable:
+
+```shell
+gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50
+```
+
+Save a figure without opening a GUI:
+
+```shell
+gemc-analyzer out.root E --kind root --detector flux --save energy.png
+```
+
+Analyzer inputs:
+
+- CSV output files or CSV root names
+- ROOT files when `pygemc[root]` dependencies are installed
+- Digitized and true-information data streams
+
+## Tests
+
+Run the standalone Python tests:
+
+```shell
+pytest
+pytest tests/test_cli.py
+pytest tests/test_geometry.py
+pytest -v
+pytest -k "sqlite"
+```
+
+The tests cover CLI behavior and geometry database generation. They intentionally do not require Geant4 or a compiled `gemc` executable; full simulation tests live in the parent GEMC Meson build.
+
+## Project Layout
+
+| Path | Purpose |
+| --- | --- |
+| `src/pygemc/api/` | Geometry, materials, units, SQLite output, PyVista support, and templates |
+| `src/pygemc/analyzer/` | CSV/ROOT readers, plotting, and analyzer CLI |
+| `tests/` | Standalone pytest suite |
+| `releases/` | Release notes |
+| `pyproject.toml` | Python packaging metadata and console scripts |
+| `meson.build` | Meson subproject integration used by GEMC |
+
+## Documentation
+
+- [GEMC homepage](https://gemc.github.io/home/)
+- [Python API overview](https://gemc.github.io/home/documentation/api/pyvista_api.html)
+- [Quickstart](https://gemc.github.io/home/documentation/quickstart/)
+- [Examples](https://gemc.github.io/home/examples/)
+- [GEMC source repository](https://github.com/gemc/src)
+
+## Contributing
+
+Keep patches focused and run the relevant pytest targets before opening a pull request. If a change affects the integrated GEMC build, also run the parent repository Meson tests for the affected examples or modules.
+
+## License
+
+`pygemc` is distributed under the MIT license as declared in [`pyproject.toml`](pyproject.toml).
+
+[tests]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml
+[tests-badge]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml/badge.svg
+[python-badge]: https://img.shields.io/badge/python-3.10%2B-blue.svg
+[license-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[docs]: https://gemc.github.io/home/
+[docs-badge]: https://img.shields.io/badge/docs-gemc.github.io-blue.svg
+[pyproject]: pyproject.toml
