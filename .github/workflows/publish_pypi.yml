@@ -23,6 +23,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.repository }}
 
     steps:
       - uses: actions/checkout@v5
