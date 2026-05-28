@@ -27,6 +27,12 @@ The package is installed as part of the GEMC source build and can also be develo
 
 ## Installation
 
+Choose the installation path based on what you need:
+
+- Use PyPI for Python geometry building, PyVista previews, and output analysis without the compiled `gemc` simulator.
+- Build [GEMC from source](https://gemc.github.io/home/installation/#build-and-install-gemc-from-source) for the full Geant4 simulation executable and the bundled `pygemc` Python environment.
+- Use the development install when you are editing `pygemc` itself.
+
 Use a Python virtual environment for direct `pip` installs:
 
 ```shell
@@ -97,9 +103,10 @@ The package requires Python 3.10 or newer and depends on NumPy, VTK, PyVista, Py
 
 ### Installed with GEMC
 
-When GEMC is built from source, the parent Meson project installs `pygemc` into the GEMC Python environment. After adding the GEMC Python environment to `PATH`, the commands below are available:
+When GEMC is built from source, the parent Meson project installs `pygemc` into the GEMC Python environment at `<prefix>/python_env`. After adding `<prefix>/bin` and `<prefix>/python_env/bin` to `PATH`, the simulator and Python tools are available:
 
 ```shell
+gemc -v
 gemc-system-template --help
 gemc-analyzer --help
 ```
