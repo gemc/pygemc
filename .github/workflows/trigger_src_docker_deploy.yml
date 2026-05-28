@@ -7,6 +7,8 @@ name: Trigger gemc deploy
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - "**/README*"
 
 jobs:
   trigger-docker-deploy:
