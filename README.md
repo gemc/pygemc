@@ -2,7 +2,7 @@
 
 [![Tests][tests-badge]][tests]
 [![Python][python-badge]][pyproject]
-[![License: MIT][license-badge]][pyproject]
+[![License: GEMC][license-badge]][license]
 [![GEMC documentation][docs-badge]][docs]
 
 `pygemc` is the Python API used by [GEMC](https://github.com/gemc/src) to define detector geometry, materials, optical properties, mirrors, geometry variations, and lightweight output-analysis workflows. It lets users build GEMC databases with Python scripts, preview geometry with PyVista, and inspect GEMC CSV or ROOT output without writing C++.
@@ -243,12 +243,13 @@ Keep patches focused and run the relevant pytest targets before opening a pull r
 
 ## License
 
-`pygemc` is distributed under the MIT license as declared in [`pyproject.toml`](pyproject.toml).
+`pygemc` is distributed under the GEMC Software License, the same license used by the main GEMC source repository. See [`LICENSE.md`](LICENSE.md).
 
 [tests]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml
 [tests-badge]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml/badge.svg
 [python-badge]: https://img.shields.io/badge/python-3.10%2B-blue.svg
-[license-badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[license]: LICENSE.md
+[license-badge]: https://img.shields.io/badge/license-GEMC-blue.svg
 [docs]: https://gemc.github.io/home/
 [docs-badge]: https://img.shields.io/badge/docs-gemc.github.io-blue.svg
 [pyproject]: pyproject.toml
