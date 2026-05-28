@@ -37,10 +37,16 @@ python -m pip install --upgrade pip
 
 ### Stable PyPI Install
 
-Install `pygemc` with:
+Install [`pygemc` from PyPI](https://pypi.org/project/pygemc/) with:
 
 ```shell
 python -m pip install pygemc
+```
+
+Update an existing PyPI installation with:
+
+```shell
+python -m pip install --upgrade pygemc
 ```
 
 Optional ROOT-file analysis dependencies:
@@ -49,12 +55,24 @@ Optional ROOT-file analysis dependencies:
 python -m pip install "pygemc[root]"
 ```
 
+Update with optional ROOT-file analysis dependencies enabled:
+
+```shell
+python -m pip install --upgrade "pygemc[root]"
+```
+
 ### Development Snapshot
 
 Install the moving GitHub `dev` prerelease with:
 
 ```shell
 python -m pip install "pygemc @ git+https://github.com/gemc/pygemc.git@dev"
+```
+
+Update the GitHub `dev` snapshot with:
+
+```shell
+python -m pip install --upgrade --force-reinstall "pygemc @ git+https://github.com/gemc/pygemc.git@dev"
 ```
 
 Use this when you need the latest development version before the next stable PyPI release.
@@ -285,7 +303,7 @@ Keep patches focused and run the relevant pytest targets before opening a pull r
 [tests-badge]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml/badge.svg
 [python-badge]: https://img.shields.io/badge/python-3.10%2B-blue.svg
 [pypi]: https://pypi.org/project/pygemc/
-[pypi-badge]: https://img.shields.io/pypi/v/pygemc.svg
+[pypi-badge]: https://img.shields.io/pypi/v/pygemc.svg?cacheSeconds=300
 [license]: LICENSE.md
 [license-badge]: https://img.shields.io/badge/license-GEMC-blue.svg
 [docs]: https://gemc.github.io/home/
