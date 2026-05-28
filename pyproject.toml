@@ -9,7 +9,7 @@ description = "Python API for GEMC geometry definition and output analysis"
 readme = "README.md"
 license = { file = "LICENSE.md" }
 requires-python = ">=3.10"
-authors = [{ name = "Maurizio Ungaro", email = "maureeungaro@gmail.com" }]
+authors = [{ name = "Maurizio Ungaro", email = "ungaro@jlab.org" }]
 keywords = ["geant4", "simulation", "detector", "physics", "gemc"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -45,6 +45,7 @@ Repository = "https://github.com/gemc/pygemc"
 
 [tool.hatch.version]
 source = "vcs"
+tag-pattern = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
 
 [tool.hatch.build.targets.sdist]
 include = ["src/", "LICENSE.md"]

@@ -1,0 +1,68 @@
+name: Publish PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Stable release tag to publish, e.g. vX.Y.Z"
+        required: true
+        type: string
+      repository:
+        description: "Package index target"
+        required: true
+        default: "pypi"
+        type: choice
+        options:
+          - pypi
+          - testpypi
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Ref must be a stable release tag
+        run: |
+          if [[ ! "${{ inputs.ref }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "PyPI publishing is only allowed from stable tags like v0.2.0, not '${{ inputs.ref }}'."
+            exit 1
+          fi
+
+          checked_out_tag="$(git describe --exact-match --tags HEAD)"
+          if [[ "$checked_out_tag" != "${{ inputs.ref }}" ]]; then
+            echo "Checked out '$checked_out_tag', expected '${{ inputs.ref }}'."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade build twine
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Check distributions
+        run: python -m twine check dist/*
+
+      - name: Publish to TestPyPI
+        if: ${{ inputs.repository == 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Publish to PyPI
+        if: ${{ inputs.repository == 'pypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1

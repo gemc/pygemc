@@ -1,0 +1,58 @@
+name: Nightly Dev Release
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: "34 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  dev-release:
+    runs-on: ubuntu-latest
+    env:
+      DEVMD_SINCE: "2026-05-23"
+      TAG_NAME: "dev"
+      RELEASE_TITLE: "Dev Nightly"
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Generate dev notes
+        run: bash ci/update-devmd.sh
+
+      - name: Extract release body
+        run: |
+          awk '/<!-- AUTO-DEVMD:START -->/{f=1;print;next} /<!-- AUTO-DEVMD:END -->/{print;f=0} f' releases/dev.md > /tmp/release_notes.md
+          if [ ! -s /tmp/release_notes.md ]; then
+            cp releases/dev.md /tmp/release_notes.md
+          fi
+
+      - name: Create or move dev tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "${TAG_NAME}" "${GITHUB_SHA}"
+          git push --force origin "refs/tags/${TAG_NAME}"
+
+      - name: Delete existing dev release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${TAG_NAME}" >/dev/null 2>&1 && \
+            gh release delete "${TAG_NAME}" -y || \
+            echo "No existing ${TAG_NAME} release"
+
+      - name: Create dev prerelease
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ env.TAG_NAME }}
+          name: ${{ env.RELEASE_TITLE }}
+          commit: ${{ github.sha }}
+          bodyFile: /tmp/release_notes.md
+          prerelease: true
+          allowUpdates: true
+          artifactErrorsFailBuild: false

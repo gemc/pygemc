@@ -2,6 +2,7 @@
 
 [![Tests][tests-badge]][tests]
 [![Python][python-badge]][pyproject]
+[![PyPI][pypi-badge]][pypi]
 [![License: GEMC][license-badge]][license]
 [![GEMC documentation][docs-badge]][docs]
 
@@ -26,18 +27,52 @@ The package is installed as part of the GEMC source build and can also be develo
 
 ## Installation
 
-### Standalone Development Install
+Use a Python virtual environment for direct `pip` installs:
 
 ```shell
 python3 -m venv ~/venv/pygemc
 source ~/venv/pygemc/bin/activate
-pip install -e ".[dev]"
+python -m pip install --upgrade pip
+```
+
+### Stable PyPI Install
+
+Install `pygemc` with:
+
+```shell
+python -m pip install pygemc
 ```
 
 Optional ROOT-file analysis dependencies:
 
 ```shell
-pip install -e ".[dev,root]"
+python -m pip install "pygemc[root]"
+```
+
+### Development Snapshot
+
+Install the moving GitHub `dev` prerelease with:
+
+```shell
+python -m pip install "pygemc @ git+https://github.com/gemc/pygemc.git@dev"
+```
+
+Use this when you need the latest development version before the next stable PyPI release.
+
+### Local Clone Development Install
+
+Use this when you are editing `pygemc` from a local clone:
+
+```shell
+git clone https://github.com/gemc/pygemc.git
+cd pygemc
+python -m pip install -e ".[dev]"
+```
+
+Optional ROOT-file analysis dependencies for local development:
+
+```shell
+python -m pip install -e ".[dev,root]"
 ```
 
 The package requires Python 3.10 or newer and depends on NumPy, VTK, PyVista, PyVistaQt, PyQt6, pandas, and matplotlib.
@@ -249,6 +284,8 @@ Keep patches focused and run the relevant pytest targets before opening a pull r
 [tests]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml
 [tests-badge]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml/badge.svg
 [python-badge]: https://img.shields.io/badge/python-3.10%2B-blue.svg
+[pypi]: https://pypi.org/project/pygemc/
+[pypi-badge]: https://img.shields.io/pypi/v/pygemc.svg
 [license]: LICENSE.md
 [license-badge]: https://img.shields.io/badge/license-GEMC-blue.svg
 [docs]: https://gemc.github.io/home/
