@@ -140,12 +140,12 @@ Common command-line options accepted by geometry scripts:
 
 PyVista support is central to `pygemc`: geometry scripts can display the detector as they build it, open an interactive Qt viewer, or export a `.vtksz` scene that can be published in documentation.
 
-<!-- PyVista gallery setting: edit width="200" height="200" below to resize all thumbnails. -->
+<!-- PyVista gallery setting: edit width="300" height="300" below to resize all thumbnails. -->
 | B1 | B2 |
 | --- | --- |
-| <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/b1/b1.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/b1/geometry.png" alt="B1 PyVista geometry" width="200" height="200"></a> | <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/b2/b2.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/b2/geometry.png" alt="B2 PyVista geometry" width="200" height="200"></a> |
+| <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/b1/b1.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/b1/geometry.png" alt="B1 PyVista geometry" width="300" height="300"></a> | <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/b2/b2.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/b2/geometry.png" alt="B2 PyVista geometry" width="300" height="300"></a> |
 | Materials | Simple Flux |
-| <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/materials/material.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/materials/geometry.png" alt="Materials PyVista geometry" width="200" height="200"></a> | <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/simple_flux/simple_flux.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/simple_flux/geometry.png" alt="Simple Flux PyVista geometry" width="200" height="200"></a> |
+| <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/materials/material.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/materials/geometry.png" alt="Materials PyVista geometry" width="300" height="300"></a> | <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/simple_flux/simple_flux.vtksz"><img src="https://gemc.github.io/home/assets/images/examples/simple_flux/geometry.png" alt="Simple Flux PyVista geometry" width="300" height="300"></a> |
 
 Open the linked interactive PyVista scenes generated from the GEMC examples.
 
