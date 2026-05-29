@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
 	parser.add_argument(
 		"--file",
 		type=Path,
-		help="Markdown file to update. If omitted, the generated issue list is printed to stdout.",
+		help="Markdown file to update. If omitted, updates the latest versioned file in ./releases.",
 	)
 	parser.add_argument(
 		"--section",
@@ -55,18 +55,57 @@ def main(argv: list[str] | None = None) -> int:
 	issues = fetch_milestone_issues(args.repo, args.milestone, args.state, token)
 	lines = format_issues(args.repo, issues)
 
-	if args.file is None:
+	default_file = default_release_file(args.repo)
+	if args.file is None and default_file is None:
 		print("\n".join(lines))
+		if Path("releases").is_dir():
+			print(
+				f"Not updating ./releases because this checkout does not appear to be {args.repo}. "
+				"Use --file to override.",
+				file=sys.stderr,
+			)
 		return 0
 
-	update_markdown_section(args.file, args.section, lines)
-	print(f"Updated {args.file} with {len(issues)} issue(s) from {args.repo} milestone {args.milestone}.")
+	path = args.file or default_file
+	print(f"repo={args.repo} milestone={args.milestone} release_file={path}")
+	update_markdown_section(path, args.section, lines)
+	print(f"Updated {path} with {len(issues)} issue(s) from {args.repo} milestone {args.milestone}.")
 	return 0
 
 
 def validate_repo(repo: str) -> None:
 	if not re.fullmatch(r"[^/\s]+/[^/\s]+", repo):
 		raise SystemExit("repo must be in owner/name form, for example gemc/pygemc")
+
+
+def default_release_file(repo: str) -> Path | None:
+	candidates = [Path.cwd(), Path(__file__).resolve().parents[1]]
+	for root in candidates:
+		if current_repo_matches(root, repo) and (root / "releases").is_dir():
+			return latest_release_file(root / "releases")
+	return None
+
+
+def current_repo_matches(root: Path, repo: str) -> bool:
+	git_dir = root / ".git"
+	if not git_dir.exists():
+		return False
+
+	try:
+		import subprocess
+
+		result = subprocess.run(
+			["git", "remote", "get-url", "origin"],
+			check=True,
+			capture_output=True,
+			text=True,
+			cwd=root,
+		)
+	except Exception:
+		return False
+
+	remote = result.stdout.strip().removesuffix(".git")
+	return remote.endswith(f":{repo}") or remote.endswith(f"/{repo}")
 
 
 def fetch_milestone_issues(repo: str, milestone: int, state: str, token: str | None) -> list[dict]:
@@ -123,6 +162,26 @@ def format_issues(repo: str, issues: list[dict]) -> list[str]:
 		f"- [Issue #{issue['number']}](https://github.com/{repo}/issues/{issue['number']}): {issue['title']}"
 		for issue in issues
 	]
+
+
+def latest_release_file(releases_dir: Path) -> Path:
+	candidates = []
+	for path in releases_dir.glob("*.md"):
+		version = release_version(path)
+		if version is not None:
+			candidates.append((version, path))
+
+	if not candidates:
+		raise SystemExit(f"No versioned release notes found in {releases_dir}. Use --file to select a file.")
+
+	return max(candidates, key=lambda item: item[0])[1]
+
+
+def release_version(path: Path) -> tuple[int, ...] | None:
+	match = re.fullmatch(r"v?(\d+(?:\.\d+)*)\.md", path.name)
+	if match is None:
+		return None
+	return tuple(int(part) for part in match.group(1).split("."))
 
 
 def update_markdown_section(path: Path, section: str, replacement_lines: list[str]) -> None:
