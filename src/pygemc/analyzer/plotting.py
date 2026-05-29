@@ -32,6 +32,9 @@ DEFAULT_LABELS: Mapping[str, str] = {
 	"mvy": "Mother Track Vertex Y (mm)",
 	"mvz": "Mother Track Vertex Z (mm)",
 	"mtid": "Mother Track ID",
+	"avgx": "Average X Position",
+	"avgy": "Average Y Position",
+	"avgz": "Average Z Position",
 }
 
 VARIABLE_ALIASES: Mapping[str, tuple[str, ...]] = {
@@ -79,6 +82,70 @@ def plot_variable(
 		show=show,
 		**hist_kwargs,
 	)
+
+
+def plot_y_vs_x(
+	frame: pd.DataFrame,
+	*,
+	x: str = "avgx",
+	y: str = "avgy",
+	bins: int = 80,
+	xlim: tuple[float, float] | None = None,
+	ylim: tuple[float, float] | None = None,
+	position_unit: str = "cm",
+	ax: plt.Axes | None = None,
+	show: bool = False,
+	**hist_kwargs: Any,
+) -> tuple[plt.Figure, plt.Axes]:
+	"""Plot a 2D hit-position map using ``y`` versus ``x`` coordinates."""
+
+	if frame.empty:
+		raise ValueError("Selected data table is empty.")
+
+	x = _resolve_variable(frame, x)
+	y = _resolve_variable(frame, y)
+
+	x_values = pd.to_numeric(frame[x], errors="coerce")
+	y_values = pd.to_numeric(frame[y], errors="coerce")
+	values = pd.DataFrame({"x": x_values, "y": y_values}).dropna()
+	if values.empty:
+		raise ValueError(f"Columns '{x}' and '{y}' have no numeric values to plot.")
+
+	scale = _position_scale(position_unit)
+	values = values * scale
+
+	if ax is None:
+		fig, ax = plt.subplots(figsize=(5.2, 4.8))
+	else:
+		fig = ax.figure
+
+	hist_defaults = {"cmap": "viridis"}
+	hist_defaults.update(hist_kwargs)
+	hist = ax.hist2d(
+		values["x"],
+		values["y"],
+		bins=bins,
+		range=_hist2d_range(values, xlim, ylim),
+		**hist_defaults,
+	)
+	cbar = fig.colorbar(hist[3], ax=ax)
+	cbar.set_label("Hits / bin")
+
+	if xlim is not None:
+		ax.set_xlim(xlim)
+	if ylim is not None:
+		ax.set_ylim(ylim)
+
+	unit_label = f" [{position_unit}]" if position_unit else ""
+	ax.set_xlabel(f"{DEFAULT_LABELS.get(x, x)}{unit_label}", fontsize=12)
+	ax.set_ylabel(f"{DEFAULT_LABELS.get(y, y)}{unit_label}", fontsize=12)
+	ax.set_title(f"{DEFAULT_LABELS.get(y, y)} vs {DEFAULT_LABELS.get(x, x)}", fontsize=14)
+	fig.tight_layout(pad=0.4)
+
+	if show:
+		plt.show()
+
+	return fig, ax
 
 
 def plot_histogram(
@@ -147,6 +214,27 @@ def plot_histogram(
 		plt.show()
 
 	return fig, ax
+
+
+def _hist2d_range(
+	values: pd.DataFrame,
+	xlim: tuple[float, float] | None,
+	ylim: tuple[float, float] | None,
+) -> list[tuple[float, float]] | None:
+	if xlim is None and ylim is None:
+		return None
+
+	xrange = xlim if xlim is not None else (float(values["x"].min()), float(values["x"].max()))
+	yrange = ylim if ylim is not None else (float(values["y"].min()), float(values["y"].max()))
+	return [xrange, yrange]
+
+
+def _position_scale(position_unit: str) -> float:
+	if position_unit == "mm":
+		return 1.0
+	if position_unit == "cm":
+		return 0.1
+	raise ValueError("position_unit must be one of: 'mm', 'cm'")
 
 
 def _resolve_variable(frame: pd.DataFrame, variable: str) -> str:

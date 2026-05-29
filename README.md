@@ -253,6 +253,12 @@ Plot a variable:
 gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50
 ```
 
+Plot hit positions in the y-vs-x plane:
+
+```shell
+gemc-analyzer counter_t0_true_info.csv --kind csv --data true_info --plot yvsx --xlim -20 20 --ylim -20 20
+```
+
 Save a figure without opening a GUI:
 
 ```shell
