@@ -143,6 +143,12 @@ Export a VTK.js scene:
 ./counter.py -pvvtk counter -pvz 0.25
 ```
 
+Use a light flat background for documentation exports:
+
+```shell
+./counter.py -pvvtk counter -pvbg "0.92 0.92 0.98" -pvbgt none
+```
+
 Run the generated simulation with GEMC when the compiled `gemc` executable is available:
 
 ```shell
@@ -195,6 +201,8 @@ Common command-line options accepted by geometry scripts:
 | `-pvb` | Show a PyVistaQt background plotter |
 | `-pvvtk` | Export a VTK.js `.vtksz` scene |
 | `-pvz` | Set the VTK.js export zoom |
+| `-pvbg` | Set the PyVista background color as a name, hex string, or `r g b` triple |
+| `-pvbgt` | Set the optional PyVista top gradient color; use `none` for a flat background |
 
 ## PyVista Visualization
 

@@ -91,6 +91,10 @@ def get_arguments(argv=None):
 	                    help="Export PyVista scene as a VTK.js .vtksz file; .vtksz is added if omitted")
 	parser.add_argument("-pvz", "--pyvista-vtksz-zoom", type=float, default=0.25,
 	                    help="Initial VTK.js scene zoom for --pyvista-vtksz; smaller values zoom out")
+	parser.add_argument("-pvbg", "--pyvista-background-color", default="#303048",
+	                    help="Set PyVista background color as a name, hex string, or 'r g b' triple")
+	parser.add_argument("-pvbgt", "--pyvista-background-top", default="#000020",
+	                    help="Set PyVista top background color for a gradient; use 'none' for a flat background")
 	parser.add_argument("-axes", "--add_axes_at_zero", action="store_true",
 	                    help="Add 10cm axes at (0, 0, 0)")
 
@@ -194,6 +198,26 @@ class GConfiguration:
 
 		self.initialize_storage()
 
+	@staticmethod
+	def _parse_pyvista_color(value):
+		if value is None:
+			return None
+
+		if isinstance(value, str):
+			color = value.strip()
+			if color.lower() in {"none", "null"}:
+				return None
+
+			fields = color.replace(",", " ").split()
+			if len(fields) == 3:
+				try:
+					return tuple(float(field) for field in fields)
+				except ValueError:
+					pass
+			return color
+
+		return value
+
 	@property
 	def plotter(self):
 		if not self.use_pyvista or self.pv is None:
@@ -212,7 +236,16 @@ class GConfiguration:
 					self._plotter = self.pv.Plotter()
 
 			self._plotter.add_axes()
-			self._plotter.set_background("#303048", top="#000020")
+			background = self._parse_pyvista_color(
+				getattr(self.args, "pyvista_background_color", "#303048")
+			)
+			background_top = self._parse_pyvista_color(
+				getattr(self.args, "pyvista_background_top", "#000020")
+			)
+			if background_top is None:
+				self._plotter.set_background(background)
+			else:
+				self._plotter.set_background(background, top=background_top)
 
 		return self._plotter
 
