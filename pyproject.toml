@@ -36,8 +36,9 @@ root = ["uproot", "awkward"]
 dev  = ["pytest", "pytest-cov", "ruff"]
 
 [project.scripts]
-gemc-analyzer       = "pygemc.analyzer.cli:main"
+gemc-analyzer        = "pygemc.analyzer.cli:main"
 gemc-system-template = "pygemc.api.system_template:main"
+gemc-sqlite          = "pygemc.api.gsqlite:main"
 
 [project.urls]
 Homepage   = "https://gemc.github.io/home/"

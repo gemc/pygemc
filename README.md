@@ -21,6 +21,7 @@ The package is installed as part of the GEMC source build and can also be develo
 - PyVista rendering, interactive Qt display, and VTK.js `.vtksz` export for geometry inspection and documentation
 - `gemc-system-template` CLI for generating ready-to-run detector systems
 - Python code snippets for supported Geant4 solid constructors
+- `gemc-sqlite` CLI for creating and inspecting GEMC SQLite database files
 - `gemc-analyzer` CLI for summarizing and plotting GEMC CSV or ROOT output
 - Unit conversion helpers for length, angle, time, and energy strings
 - Pytest suite that does not require a compiled `gemc` binary
@@ -33,10 +34,10 @@ Choose the installation path based on what you need:
 - Build [GEMC from source](https://gemc.github.io/home/installation/#build-and-install-gemc-from-source) for the full Geant4 simulation executable and the bundled `pygemc` Python environment.
 - Use the development install when you are editing `pygemc` itself.
 
-Use a Python virtual environment for direct `pip` installs:
+Use a Python virtual environment for direct `pip` installs. On macOS with Homebrew use `/opt/homebrew/bin/python3` to ensure the correct interpreter is used:
 
 ```shell
-python3 -m venv ~/venv/pygemc
+/opt/homebrew/bin/python3 -m venv ~/venv/pygemc
 source ~/venv/pygemc/bin/activate
 python -m pip install --upgrade pip
 ```
@@ -103,13 +104,22 @@ The package requires Python 3.10 or newer and depends on NumPy, VTK, PyVista, Py
 
 ### Installed with GEMC
 
-When GEMC is built from source, the parent Meson project installs `pygemc` into the GEMC Python environment at `<prefix>/python_env`. After adding `<prefix>/bin` and `<prefix>/python_env/bin` to `PATH`, the simulator and Python tools are available:
+When GEMC is built from source, the parent Meson project installs `pygemc` into the GEMC Python environment at `<prefix>/python_env`. Activate that environment before running any `pygemc` tools:
+
+```shell
+source <prefix>/python_env/bin/activate
+```
+
+After activation, the simulator and Python tools are available:
 
 ```shell
 gemc -v
 gemc-system-template --help
+gemc-sqlite --help
 gemc-analyzer --help
 ```
+
+All subsequent `python` and tool invocations in the shell session will use the GEMC environment's interpreter automatically. To deactivate, run `deactivate`.
 
 ## Quickstart
 
@@ -245,6 +255,34 @@ Write a snippet to a file:
 
 ```shell
 gemc-system-template -gv G4Tubs -write_to geometry.py -geo_sub build_tube
+```
+
+### `gemc-sqlite`
+
+Create a new empty SQLite database with the GEMC geometry and materials schema:
+
+```shell
+gemc-sqlite -n mydetector.sqlite
+```
+
+If the file already exists it is removed and recreated. The resulting database contains two tables — `geometry` and `materials` — with all columns expected by GEMC, ready to be populated by a geometry script using `factory: sqlite`.
+
+Open an existing database and list its volumes:
+
+```shell
+gemc-sqlite -sql mydetector.sqlite -sv
+```
+
+List materials:
+
+```shell
+gemc-sqlite -sql mydetector.sqlite -sm
+```
+
+Filter by experiment, variation, system, or run number:
+
+```shell
+gemc-sqlite -sql mydetector.sqlite -sv -ef examples -vf default -sf counter -rf 1
 ```
 
 ### `gemc-analyzer`

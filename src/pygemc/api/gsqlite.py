@@ -6,6 +6,7 @@
 
 # python
 import argparse
+import os
 import sys
 import sqlite3
 
@@ -21,6 +22,7 @@ def main():
 	desc_str = "   gemc sqlite interface\n"
 	sqlitedb: sqlite3.Connection = None
 
+	experiment_filter = ''
 	variation_filter = ''
 	system_filter = ''
 	runno_filter = ''
@@ -30,6 +32,9 @@ def main():
 	parser = argparse.ArgumentParser(description=desc_str)
 
 	# file writers
+	parser.add_argument('-n', metavar='<filename>', action='store', type=str,
+	                    help='create a new empty SQLite database with the GEMC schema',
+	                    default=NGIVEN)
 	parser.add_argument('-sql', action='store', type=str, help='set the sqlite filename',
 	                    default=NGIVEN)
 	parser.add_argument('-sv', action='store_true', help='show volumes from database')
@@ -45,6 +50,10 @@ def main():
 	parser.add_argument('-what', action='store', type=str, help='show only the selected fields')
 
 	args = parser.parse_args()
+
+	if args.n != NGIVEN:
+		create_new_sqlite_db(args.n)
+		return
 
 	if args.sql != NGIVEN:
 		sqlitedb = sqlite3.connect(args.sql)
@@ -86,6 +95,30 @@ def main():
 		parser.print_help(sys.stderr)
 		print()
 		sys.exit(1)
+
+
+def create_new_sqlite_db(filename):
+	"""Create a new SQLite database file with the GEMC geometry and materials schema."""
+	import types
+	# Deferred imports avoid the circular dependency: gvolume/gmaterial import from gsqlite
+	from .gvolume import GVolume
+	from .gmaterial import GMaterial
+
+	try:
+		os.remove(filename)
+		print(f"  {GColors.YELLOW}Removed existing database:{GColors.END} {filename}")
+	except OSError:
+		pass
+
+	sqlitedb = sqlite3.connect(filename)
+	create_sqlite_database(sqlitedb)
+
+	cfg = types.SimpleNamespace(sqlitedb=sqlitedb)
+	add_geometry_fields_to_sqlite_if_needed(GVolume('_schema'), cfg)
+	add_materials_fields_to_sqlite_if_needed(GMaterial('_schema'), cfg)
+
+	sqlitedb.close()
+	print(f"  {GColors.GREEN}Created new SQLite database:{GColors.END} {filename}")
 
 
 def show_volumes_from_database(sqlitedb, what, all_filters):

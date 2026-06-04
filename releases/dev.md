@@ -6,13 +6,6 @@ Install this moving development snapshot directly from GitHub:
 pip install "pygemc @ git+https://github.com/gemc/pygemc.git@dev"
 ```
 
-## Unreleased changes
-
-- Added PyVista background controls to geometry scripts:
-  - `-pvbg`, `--pyvista-background-color` sets the base background color.
-  - `-pvbgt`, `--pyvista-background-top` sets the optional top gradient color; use `none` for a flat background.
-- Documented light-background VTK.js export usage for documentation images.
-
 <!-- AUTO-DEVMD:START -->
 ## Commits on main since 2026-05-23
 

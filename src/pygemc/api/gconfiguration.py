@@ -131,6 +131,7 @@ class GConfiguration:
 		self.dbhost = self.args.dbhost
 		self.sqlitedb: sqlite3.Connection = None
 		self.verbosity = verbosity
+		self.variations: list = []
 		self.nvolumes = 0
 		self.nmaterials = 0
 		self.geoFileName = None
@@ -446,6 +447,8 @@ class GConfiguration:
 		self.initialized_ascii_file_sets.add(file_set)
 
 	def init_variation(self, newVariation, reset_storage=True):
+		if newVariation not in self.variations:
+			self.variations.append(newVariation)
 		if self.variation != newVariation:
 			self.variation = newVariation
 			print(f"  ❖ Variation switched to: {self.variation}")
@@ -524,7 +527,9 @@ class GConfiguration:
 			print(f"    	↦ Materials File: {self.matFileName}")
 			print(f"    	↦ Mirrors File: {self.mirFileName}")
 
-		print(f"	▪︎ (Variation, Run): ({self.variation}, {self.runno})")
+		var_label = "Variation" if len(self.variations) <= 1 else "Variations"
+		var_str = ", ".join(self.variations) if self.variations else self.variation
+		print(f"	▪︎ ({var_label}, Run): ({var_str}, {self.runno})")
 
 		if self.nvolumes > 0:
 			print(f"	▪︎ Number of volumes: {self.nvolumes}")
