@@ -91,9 +91,9 @@ def get_arguments(argv=None):
 	                    help="Export PyVista scene as a VTK.js .vtksz file; .vtksz is added if omitted")
 	parser.add_argument("-pvz", "--pyvista-vtksz-zoom", type=float, default=0.25,
 	                    help="Initial VTK.js scene zoom for --pyvista-vtksz; smaller values zoom out")
-	parser.add_argument("-pvbg", "--pyvista-background-color", default="#303048",
+	parser.add_argument("-pvbg", "--pyvista-background-color", default="white",
 	                    help="Set PyVista background color as a name, hex string, or 'r g b' triple")
-	parser.add_argument("-pvbgt", "--pyvista-background-top", default="#000020",
+	parser.add_argument("-pvbgt", "--pyvista-background-top", default="none",
 	                    help="Set PyVista top background color for a gradient; use 'none' for a flat background")
 	parser.add_argument("-axes", "--add_axes_at_zero", action="store_true",
 	                    help="Add 10cm axes at (0, 0, 0)")
@@ -238,10 +238,10 @@ class GConfiguration:
 
 			self._plotter.add_axes()
 			background = self._parse_pyvista_color(
-				getattr(self.args, "pyvista_background_color", "#303048")
+				getattr(self.args, "pyvista_background_color", "white")
 			)
 			background_top = self._parse_pyvista_color(
-				getattr(self.args, "pyvista_background_top", "#000020")
+				getattr(self.args, "pyvista_background_top", "none")
 			)
 			if background_top is None:
 				self._plotter.set_background(background)

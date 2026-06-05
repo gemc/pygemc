@@ -163,6 +163,7 @@ def add_geometry_fields_to_sqlite_if_needed(gvolume, configuration):
 	sql = configuration.sqlitedb.cursor()
 	sql.execute("SELECT name FROM PRAGMA_TABLE_INFO('geometry');")
 	fields = sql.fetchall()
+	field_names = {field[0] for field in fields}
 
 	# if there is only one column, add the columns
 	if len(fields) == 1:
@@ -170,12 +171,13 @@ def add_geometry_fields_to_sqlite_if_needed(gvolume, configuration):
 		add_column(configuration.sqlitedb, "geometry", "system", "TEXT")
 		add_column(configuration.sqlitedb, "geometry", "variation", "TEXT")
 		add_column(configuration.sqlitedb, "geometry", "run", "INTEGER")
+		field_names.update({"experiment", "system", "variation", "run"})
 
-		# add columns from gvolume class
-		for field in gvolume.__dict__:
-			if field != "gcolor":
-				sql_type = sqltype_of_variable(gvolume.__dict__[field])
-				add_column(configuration.sqlitedb, "geometry", field, sql_type)
+	# add missing columns from gvolume class
+	for field in gvolume.__dict__:
+		if field != "gcolor" and field not in field_names:
+			sql_type = sqltype_of_variable(gvolume.__dict__[field])
+			add_column(configuration.sqlitedb, "geometry", field, sql_type)
 	configuration.sqlitedb.commit()
 
 

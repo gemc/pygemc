@@ -41,6 +41,10 @@
 #                 For example add_rotation("0*deg, 0*deg, 40*deg") follow by add_rotation("10*deg, 0*deg, 0*deg"):
 #                  defines a rotation of 40° around z first then apply a rotation of 10° around x.
 #
+# - g4placement_type: Selects the Geant4 placement constructor convention.
+#                     "active" uses G4Transform3D rotation/translation of the solid. This is the default.
+#                     "passive" uses the frame-rotation G4PVPlacement constructor used by GEMC2/clas12Tags.
+#
 # - mfild: The name of a magnetic field file attached to the gvolume. Default is "no".
 #          The field is defined in the file header. In case of a field map, the data is contained in the file itself.
 #
@@ -99,6 +103,7 @@ class GVolume:
 		self.mother = DEFAULTMOTHER
 		self.position = '0*mm, 0*mm, 0*mm'
 		self.rotations = ['0*deg, 0*deg, 0*deg']
+		self.g4placement_type = 'active'
 		self.mfield = None
 
 		self.visible = 1  # 0 is invisible, 1 is visible
@@ -200,6 +205,7 @@ class GVolume:
 					self.mother,
 					self.position,
 					rotation_string,
+					self.g4placement_type,
 					self.mfield,
 					self.visible,
 					self.style,
