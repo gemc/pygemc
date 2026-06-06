@@ -238,7 +238,6 @@ def render_volume(gvolume, gconfiguration):
 			else:
 				rgb = pcolor
 		pv = gconfiguration.pv
-		pars = get_dimensions(gvolume)
 		T_local = np.array(get_center(gvolume), dtype=float)
 		mstyle = "surface" if gvolume.style in (1, 2) else "wireframe"
 		mlinewidth = 1.0
@@ -246,22 +245,32 @@ def render_volume(gvolume, gconfiguration):
 			alpha = 0.05  # nearly invisible
 			mstyle = "wireframe"
 
+		mesh = None
+
+		# G4Polycone parameters include a unit-less nplanes token that get_dimensions cannot parse;
+		# handle it first with a dedicated parser before the generic pars path.
+		if gvolume.solid == 'G4Polycone':
+			mesh = _add_polycone_from_gvolume(pv, gvolume)
+			pars = ()
+		else:
+			pars = get_dimensions(gvolume)
+			if gvolume.solid == 'G4Box':
+				mesh = add_box(pv, pars)
+			elif gvolume.solid == 'G4Cons':
+				mesh = add_cons(pv, pars)
+			elif gvolume.solid == 'G4Tubs':
+				mesh = add_cylinder(pv, pars)
+			elif gvolume.solid == 'G4Trd':
+				mesh = add_trapezoid(pv, pars)
+			elif gvolume.solid == 'G4Trap':
+				mesh = add_general_trap(pv, pars)
+			elif gvolume.solid == 'G4Sphere':
+				mesh = add_sphere(pv, pars)
+
 		print(
 			f'Volume: {gvolume.name}, Solid: {gvolume.solid}, Center: {T_local}, '
 			f'Pars: {pars}, Color: {rgb}, Alpha: {alpha}')
 
-		mesh = None
-
-		if gvolume.solid == 'G4Box':
-			mesh = add_box(pv, pars)
-		elif gvolume.solid == 'G4Cons':
-			mesh = add_cons(pv, pars)
-		elif gvolume.solid == 'G4Tubs':
-			mesh = add_cylinder(pv, pars)
-		elif gvolume.solid == 'G4Trd':
-			mesh = add_trapezoid(pv, pars)
-		elif gvolume.solid == 'G4Trap':
-			mesh = add_general_trap(pv, pars)
 		if mesh is None:
 			return
 
@@ -643,6 +652,110 @@ def add_general_trap(pv, pars):
 
 	trap = pv.PolyData(pts, faces)
 	return trap.triangulate().clean()
+
+
+def add_sphere(pv, pars):
+	"""Build a G4Sphere solid (spherical shell section).
+
+	pars (deg / mm from get_dimensions):
+	  [0] rmin    inner radius (mm); 0 for solid sphere
+	  [1] rmax    outer radius (mm)
+	  [2] sphi    start azimuthal angle (deg)
+	  [3] dphi    delta azimuthal angle (deg)
+	  [4] stheta  start polar angle from +z (deg)
+	  [5] dtheta  delta polar angle (deg)
+
+	Builds a 2-D cross-section in the XZ plane and revolves it by dphi.
+	The cross-section arc traces the sphere surface so the result is always
+	watertight — avoiding VTK boolean ops on partial (non-closed) shells.
+	"""
+	rmin   = float(pars[0])
+	rmax   = float(pars[1])
+	sphi   = float(pars[2])
+	dphi   = float(pars[3])
+	stheta = float(pars[4])
+	dtheta = float(pars[5])
+
+	N = 48
+	theta_s = np.deg2rad(stheta)
+	theta_e = np.deg2rad(stheta + dtheta)
+	thetas  = np.linspace(theta_s, theta_e, N)
+
+	# Outer arc in XZ plane (y=0): x = r*sin(θ)  (cylindrical radius), z = r*cos(θ)
+	outer = np.column_stack([rmax * np.sin(thetas), np.zeros(N), rmax * np.cos(thetas)])
+
+	if rmin > 0.0:
+		inner = np.column_stack([rmin * np.sin(thetas[::-1]), np.zeros(N), rmin * np.cos(thetas[::-1])])
+		profile_pts = np.vstack([outer, inner])
+	else:
+		# Solid sector: close through the origin
+		profile_pts = np.vstack([outer, [[0.0, 0.0, 0.0]]])
+
+	npts = len(profile_pts)
+	poly = pv.PolyData()
+	poly.points = profile_pts.astype(float)
+	poly.faces  = np.array([npts] + list(range(npts)), dtype=np.int64)
+
+	shell = poly.extrude_rotate(angle=dphi, resolution=96, capping=True)
+	if abs(sphi) > 1e-6:
+		shell = shell.rotate_z(sphi, inplace=False)
+	result = shell.triangulate().clean()
+	# split_sharp_edges gives crisp edges at the phi/theta cuts while keeping spherical surfaces smooth
+	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return result
+
+
+def add_polycone(pv, phi_start, phi_total, zplane, iradius, oradius):
+	"""Build a G4Polycone solid by revolving a closed 2-D cross-section profile.
+
+	Outer boundary (forward) + inner boundary (reversed, or z-axis when rin=0) form
+	a single closed polygon that, when revolved, produces the hollow solid without
+	needing boolean operations.
+	"""
+	n = len(zplane)
+	res = 128
+
+	outer_pts = [[oradius[i], 0.0, zplane[i]] for i in range(n)]
+	have_inner = any(r > 0.0 for r in iradius)
+	if have_inner:
+		inner_pts = [[iradius[i], 0.0, zplane[i]] for i in range(n - 1, -1, -1)]
+	else:
+		inner_pts = [[0.0, 0.0, zplane[i]] for i in range(n - 1, -1, -1)]
+
+	profile_pts = np.array(outer_pts + inner_pts, dtype=float)
+	npts = len(profile_pts)
+	poly = pv.PolyData()
+	poly.points = profile_pts
+	poly.faces = np.array([npts] + list(range(npts)), dtype=np.int64)
+
+	result = poly.extrude_rotate(angle=phi_total, resolution=res, capping=True)
+	if abs(phi_start) > 1e-6:
+		result = result.rotate_z(phi_start, inplace=False)
+	result = result.triangulate().clean()
+	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return result
+
+
+def _add_polycone_from_gvolume(pv, gvolume):
+	"""Parse G4Polycone parameters (which include a unit-less nplanes token) and call add_polycone."""
+	from .g4_units import convert_angle, convert_length
+	tokens = [t.strip() for t in gvolume.parameters.split(',') if t.strip()]
+	if len(tokens) < 3:
+		return None
+	phi_start = convert_angle(tokens[0], 'deg')
+	phi_total = convert_angle(tokens[1], 'deg')
+	nplanes = int(tokens[2])
+	if len(tokens) < 3 + 3 * nplanes:
+		return None
+	rest = tokens[3:]
+
+	def to_mm(tok):
+		return convert_length(tok, 'mm')
+
+	zplane  = [to_mm(rest[i])              for i in range(nplanes)]
+	iradius = [to_mm(rest[nplanes + i])    for i in range(nplanes)]
+	oradius = [to_mm(rest[2 * nplanes + i]) for i in range(nplanes)]
+	return add_polycone(pv, phi_start, phi_total, zplane, iradius, oradius)
 
 
 def _is_box_like(mesh):
