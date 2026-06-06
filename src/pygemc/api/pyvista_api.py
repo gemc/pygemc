@@ -1,4 +1,4 @@
-from .g4_units import convert_list
+from .g4_units import convert_list, convert_angle
 import numpy as np
 import warnings
 
@@ -44,6 +44,66 @@ def euler_matrix_zyx(deg_rx, deg_ry, deg_rz):
 	# intrinsic ZYX means: v_local -> Rx -> Ry -> Rz
 	# matrix multiply in that order: R = Rz @ Ry @ Rx
 	return Rx @ Ry @ Rz
+
+
+def _axis_rotation_matrix(axis: str, angle_deg: float) -> np.ndarray:
+	"""Return 3x3 rotation matrix for rotation of angle_deg degrees around axis ('x', 'y', 'z')."""
+	c = np.cos(np.deg2rad(angle_deg))
+	s = np.sin(np.deg2rad(angle_deg))
+	if axis == 'x':
+		return np.array([[1, 0, 0], [0, c, -s], [0, s, c]], dtype=float)
+	if axis == 'y':
+		return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], dtype=float)
+	if axis == 'z':
+		return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=float)
+	return np.eye(3)
+
+
+def parse_rotation_string(rotation_str: str) -> np.ndarray:
+	"""Parse a GEMC rotation string and return a 3×3 rotation matrix.
+
+	Handles:
+	  - Simple xyz order:  "10*deg, 45*deg, 30*deg"
+	  - Ordered axes:      "ordered: zxy, 90*deg, 25*deg, 0*deg"
+	  - Compound (add_rotation):  "a1, a2, a3 + b1, b2, b3"
+
+	For ordered strings the first angle corresponds to the first axis listed, etc.
+	Rotations are intrinsic (each axis acts on the already-rotated frame).
+	"""
+	s = rotation_str.strip() if rotation_str else ''
+	if not s or s.lower() == 'null':
+		return np.eye(3)
+
+	R = np.eye(3)
+	for part in s.split(' + '):
+		part = part.strip()
+		if not part:
+			continue
+
+		order = 'xyz'
+		angles_str = part
+		if part.startswith('ordered:'):
+			tail = part[len('ordered:'):].strip()
+			comma_idx = tail.index(',')
+			order = tail[:comma_idx].strip()
+			angles_str = tail[comma_idx + 1:].strip()
+
+		tokens = [t.strip() for t in angles_str.split(',') if t.strip()]
+		angles_deg = []
+		for tok in tokens[:3]:
+			try:
+				angles_deg.append(convert_angle(tok, 'deg'))
+			except Exception:
+				angles_deg.append(0.0)
+		while len(angles_deg) < 3:
+			angles_deg.append(0.0)
+
+		# Apply axes in listed order (intrinsic): pre-multiply so each Ri is applied last.
+		for i, axis in enumerate(order):
+			Ri = _axis_rotation_matrix(axis, angles_deg[i])
+			R = Ri @ R
+
+	return R
 
 
 class GMesh:
@@ -168,10 +228,7 @@ def render_volume(gvolume, gconfiguration):
 		pcolor = gvolume.color
 		rgb = gvolume.gcolor  # already converted to 'RRGGBB'
 		alpha = gvolume.opacity
-		# rgb = pyvista_gcolor_to_pcolor(gcolor)
-		# print(f"Volume {gvolume.name} color: {pcolor} / gcolor: {gcolor}")
 		if pcolor != '778899':  # hardcoded from default
-			# if pcolor is 2 strings, check if the first string is 'metallic'
 			if ',' in pcolor:
 				parts = pcolor.split(',')
 				if len(parts) == 2:
@@ -182,17 +239,15 @@ def render_volume(gvolume, gconfiguration):
 				rgb = pcolor
 		pv = gconfiguration.pv
 		pars = get_dimensions(gvolume)
-		bcenter = get_center(gvolume)
+		T_local = np.array(get_center(gvolume), dtype=float)
 		mstyle = "surface" if gvolume.style in (1, 2) else "wireframe"
-		mlinewidth = 1.0 if gvolume.style in (1, 2) else 1.0
+		mlinewidth = 1.0
 		if gvolume.visible == 0:
 			alpha = 0.05  # nearly invisible
-			mlinewidth = 1.0
 			mstyle = "wireframe"
 
-		# print pars
 		print(
-			f'Volume: {gvolume.name}, Solid: {gvolume.solid}, Center: {bcenter}, '
+			f'Volume: {gvolume.name}, Solid: {gvolume.solid}, Center: {T_local}, '
 			f'Pars: {pars}, Color: {rgb}, Alpha: {alpha}')
 
 		mesh = None
@@ -205,22 +260,55 @@ def render_volume(gvolume, gconfiguration):
 			mesh = add_cylinder(pv, pars)
 		elif gvolume.solid == 'G4Trd':
 			mesh = add_trapezoid(pv, pars)
+		elif gvolume.solid == 'G4Trap':
+			mesh = add_general_trap(pv, pars)
 		if mesh is None:
 			return
 
-		mesh = move_to_center(mesh, bcenter)
-		smooth_shading = gvolume.solid != 'G4Box'
+		# Build F_local: the forward matrix mapping local column vectors to parent column vectors.
+		# passive (G4PVPlacement(&R, T)): Geant4 stores frot=R directly, navigation applies
+		#   p_local = R @ (p_world - T), so p_world = R^T @ p_local + T → F_local = R^T = R_raw.T
+		# active  (G4Transform3D(R, T)): Geant4 inverts the transform, so p_world = R @ p_local + T
+		#   → F_local = R_raw
+		rotation_str = gvolume.get_rotation_string() if hasattr(gvolume, 'get_rotation_string') else ''
+		R_raw = parse_rotation_string(rotation_str)
+		placement_type = getattr(gvolume, 'g4placement_type', 'active')
+		F_local = R_raw.T if placement_type == 'passive' else R_raw
+
+		if not hasattr(gconfiguration, '_world_transforms'):
+			gconfiguration._world_transforms = {}
+
+		mother = getattr(gvolume, 'mother', 'root')
+		if mother in (None, 'root', ''):
+			F_world, T_world = F_local, T_local
+		elif mother in gconfiguration._world_transforms:
+			F_parent, T_parent = gconfiguration._world_transforms[mother]
+			F_world = F_parent @ F_local
+			T_world = T_parent + F_parent @ T_local
+		else:
+			# Mother not yet rendered (unusual ordering) — use local transform only.
+			F_world, T_world = F_local, T_local
+
+		gconfiguration._world_transforms[gvolume.name] = (F_world, T_world)
+
+		# Apply world transform: mesh.points are row vectors → pts @ F_world.T + T_world
+		# applies F_world to each point as a column vector, then translates.
+		world_mesh = mesh.copy()
+		world_mesh.points = mesh.points @ F_world.T + T_world
+
+		flat_solids = {'G4Box', 'G4Trd', 'G4Trap'}
+		smooth_shading = gvolume.solid not in flat_solids
 
 		if gvolume.style == 2 and gvolume.visible != 0:
 			actor = gconfiguration.add_mesh(
-				mesh,
+				world_mesh,
 				color=rgb,
 				smooth_shading=smooth_shading,
 				opacity=min(alpha, 0.025),
 				style="surface",
 				line_width=1.0,
 			)
-			cloud = cloud_points_from_surface(pv, mesh)
+			cloud = cloud_points_from_surface(pv, world_mesh)
 			cloud_actor = gconfiguration.add_mesh(
 				cloud,
 				color=rgb,
@@ -233,9 +321,8 @@ def render_volume(gvolume, gconfiguration):
 			configure_actor_lighting(cloud_actor, metallic=False)
 		else:
 			if mstyle == "wireframe":
-				# Render only feature edges so that triangulated solids (e.g. G4Tubs) show
-				# clean outlines rather than every triangle edge looking like a solid surface.
-				edges = mesh.extract_feature_edges(
+				# Render only feature edges so triangulated solids show clean outlines.
+				edges = world_mesh.extract_feature_edges(
 					feature_angle=30,
 					boundary_edges=True,
 					feature_edges=True,
@@ -244,8 +331,10 @@ def render_volume(gvolume, gconfiguration):
 				)
 				actor = gconfiguration.add_mesh(edges, color=rgb, opacity=alpha, line_width=mlinewidth)
 			else:
-				actor = gconfiguration.add_mesh(mesh, color=rgb, smooth_shading=smooth_shading,
-				                                opacity=alpha, style=mstyle, line_width=mlinewidth)
+				actor = gconfiguration.add_mesh(
+					world_mesh, color=rgb, smooth_shading=smooth_shading,
+					opacity=alpha, style=mstyle, line_width=mlinewidth,
+				)
 		configure_actor_lighting(actor, metallic=metallic)
 
 
@@ -500,6 +589,60 @@ def add_trapezoid(pv, pars) -> None:
 	trd = trd.triangulate().clean()
 
 	return trd
+
+
+def add_general_trap(pv, pars):
+	"""Build a G4Trap solid with 11 parameters (general trapezoid).
+
+	pars (mm / deg, as returned by get_dimensions with auto-unit detection):
+	  [0]  pDz     half-length in z  (mm)
+	  [1]  pTheta  polar angle of line joining face centres  (deg)
+	  [2]  pPhi    azimuthal angle of that line  (deg)
+	  [3]  pDy1    half Y at z = -pDz  (mm)
+	  [4]  pDx1    half X at y = -pDy1 on the -z face  (mm)
+	  [5]  pDx2    half X at y = +pDy1 on the -z face  (mm)
+	  [6]  pAlp1   tilt of -z face from Y axis  (deg)
+	  [7]  pDy2    half Y at z = +pDz  (mm)
+	  [8]  pDx3    half X at y = -pDy2 on the +z face  (mm)
+	  [9]  pDx4    half X at y = +pDy2 on the +z face  (mm)
+	  [10] pAlp2   tilt of +z face from Y axis  (deg)
+
+	Vertex layout matches Geant4's G4Trap::CreateRotatedVertices ordering.
+	"""
+	pDz  = float(pars[0])
+	tc   = np.tan(np.deg2rad(float(pars[1]))) * np.cos(np.deg2rad(float(pars[2])))
+	ts   = np.tan(np.deg2rad(float(pars[1]))) * np.sin(np.deg2rad(float(pars[2])))
+	pDy1 = float(pars[3])
+	pDx1 = float(pars[4])
+	pDx2 = float(pars[5])
+	ta1  = np.tan(np.deg2rad(float(pars[6])))
+	pDy2 = float(pars[7])
+	pDx3 = float(pars[8])
+	pDx4 = float(pars[9])
+	ta2  = np.tan(np.deg2rad(float(pars[10])))
+
+	pts = np.array([
+		[-pDz*tc - pDy1*ta1 - pDx1, -pDz*ts - pDy1, -pDz],  # v0
+		[-pDz*tc - pDy1*ta1 + pDx1, -pDz*ts - pDy1, -pDz],  # v1
+		[-pDz*tc + pDy1*ta1 + pDx2, -pDz*ts + pDy1, -pDz],  # v2
+		[-pDz*tc + pDy1*ta1 - pDx2, -pDz*ts + pDy1, -pDz],  # v3
+		[+pDz*tc - pDy2*ta2 - pDx3, +pDz*ts - pDy2, +pDz],  # v4
+		[+pDz*tc - pDy2*ta2 + pDx3, +pDz*ts - pDy2, +pDz],  # v5
+		[+pDz*tc + pDy2*ta2 + pDx4, +pDz*ts + pDy2, +pDz],  # v6
+		[+pDz*tc + pDy2*ta2 - pDx4, +pDz*ts + pDy2, +pDz],  # v7
+	], dtype=float)
+
+	faces = np.array([
+		4, 0, 3, 2, 1,  # -z face
+		4, 4, 5, 6, 7,  # +z face
+		4, 0, 1, 5, 4,  # -y side
+		4, 1, 2, 6, 5,  # +x side
+		4, 2, 3, 7, 6,  # +y side
+		4, 3, 0, 4, 7,  # -x side
+	], dtype=np.int64)
+
+	trap = pv.PolyData(pts, faces)
+	return trap.triangulate().clean()
 
 
 def _is_box_like(mesh):
