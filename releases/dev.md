@@ -6,6 +6,16 @@ Install this moving development snapshot directly from GitHub:
 pip install "pygemc @ git+https://github.com/gemc/pygemc.git@dev"
 ```
 
+## Development notes
+
+- Added `GVolume.g4placement_type`, defaulting to `active`, to let geometry scripts select the Geant4 placement
+  convention used by GEMC.
+- Documented the `active` and `passive` placement choices in the README.
+- Updated SQLite geometry schema handling so existing databases can gain newly added `GVolume` fields such as
+  `g4placement_type`.
+- Use `g4placement_type = "passive"` for GEMC2/clas12Tags detector geometry ports that rely on frame-rotation
+  placement semantics.
+
 <!-- AUTO-DEVMD:START -->
 ## Commits on main since 2026-05-23
 

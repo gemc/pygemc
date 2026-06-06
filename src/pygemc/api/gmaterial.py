@@ -178,30 +178,25 @@ class GMaterial():
 			fileName = configuration.matFileName
 			configuration.nmaterials += 1
 			with open(fileName, 'a+') as dn:
-				fields = [
-					self.name,
-					self.density,
-					self.composition,
-					self.description,
-					# optical parameters
-					self.photonEnergy,
-					self.indexOfRefraction,
-					self.absorptionLength,
-					self.reflectivity,
-					self.efficiency,
-					# scintillation parameters
-					self.fastcomponent,
-					self.slowcomponent,
-					self.scintillationyield,
-					self.resolutionscale,
-					self.fasttimeconstant,
-					self.slowtimeconstant,
-					self.yieldratio,
-					self.birksConstant,
-					# other optical processes
-					self.rayleigh,
-				]
-				line = " " + " | ".join(self.entry_to_ascii(f) for f in fields) + " |\n"
+				ea = self.entry_to_ascii
+				line  = "%20s  |" % ea(self.name)
+				line += "%12s  |" % ea(self.density)
+				line += "%60s  |" % ea(self.composition)
+				line += "%40s  |" % ea(self.description)
+				line += "%60s  |" % ea(self.photonEnergy)
+				line += "%30s  |" % ea(self.indexOfRefraction)
+				line += "%30s  |" % ea(self.absorptionLength)
+				line += "%30s  |" % ea(self.reflectivity)
+				line += "%30s  |" % ea(self.efficiency)
+				line += "%30s  |" % ea(self.fastcomponent)
+				line += "%30s  |" % ea(self.slowcomponent)
+				line += "%10s  |" % ea(self.scintillationyield)
+				line += "%10s  |" % ea(self.resolutionscale)
+				line += "%10s  |" % ea(self.fasttimeconstant)
+				line += "%10s  |" % ea(self.slowtimeconstant)
+				line += "%10s  |" % ea(self.yieldratio)
+				line += "%10s  |" % ea(self.birksConstant)
+				line += "%30s  |\n" % ea(self.rayleigh)
 				dn.write(line)
 
 		elif configuration.factory == 'sqlite':

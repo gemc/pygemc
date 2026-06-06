@@ -14,6 +14,7 @@ The package is installed as part of the GEMC source build and can also be develo
 
 - Python classes for GEMC geometry and material databases
 - `GVolume` helpers for common Geant4 solids such as boxes, tubes, cones, and trapezoids
+- `GVolume.g4placement_type` to select active `G4Transform3D` placement or passive GEMC2-compatible placement
 - `GMaterial` helpers for chemical formulas, fractional-mass mixtures, and optical/scintillation properties
 - `GConfiguration` run, variation, factory, SQLite, ASCII, and PyVista configuration handling
 - `autogeometry()` convenience setup for detector scripts
@@ -121,6 +122,22 @@ gemc-analyzer --help
 
 All subsequent `python` and tool invocations in the shell session will use the GEMC environment's interpreter automatically. To deactivate, run `deactivate`.
 
+### Wiring a local pygemc clone into the GEMC build
+
+By default the GEMC Meson build fetches `pygemc` via `subprojects/pygemc.wrap` into `subprojects/pygemc/`. That
+copy is independent of any local clone, so edits to the clone are not picked up by `meson install` until the
+wrap is re-fetched.
+
+To make `meson install` always use your local clone, replace the fetched directory with a symlink **once**:
+
+```shell
+rm -rf /path/to/gemc/src/subprojects/pygemc
+ln -s /path/to/pygemc /path/to/gemc/src/subprojects/pygemc
+```
+
+Meson resolves a plain directory before the wrap file, so it uses the symlink transparently. Every subsequent
+`meson install` picks up the latest changes from the local clone with no extra steps.
+
 ## Quickstart
 
 Create a detector template:
@@ -133,13 +150,13 @@ cd counter
 
 The generated system contains:
 
-| File | Purpose |
-| --- | --- |
-| `counter.py` | Main geometry-builder script |
-| `geometry.py` | Example volumes, including a flux detector |
-| `materials.py` | Example methane-gas material |
-| `counter.yaml` | GEMC steering card |
-| `README.md` | Placeholder notes for the generated detector |
+| File           | Purpose                                      |
+| -------------- | -------------------------------------------- |
+| `counter.py`   | Main geometry-builder script                 |
+| `geometry.py`  | Example volumes, including a flux detector   |
+| `materials.py` | Example methane-gas material                 |
+| `counter.yaml` | GEMC steering card                           |
+| `README.md`    | Placeholder notes for the generated detector |
 
 Run with PyVista visualization:
 
@@ -199,20 +216,39 @@ flux.set_identifier("box", 2)
 flux.publish(cfg)
 ```
 
+### Placement convention
+
+`GVolume.g4placement_type` selects which Geant4 placement convention GEMC should use for a volume:
+
+| Value     | Meaning                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------- |
+| `active`  | Default; uses `G4Transform3D(rotation, translation)`                                     |
+| `passive` | Uses `G4PVPlacement(rotation, translation, ...)`, matching GEMC2/clas12Tags conventions |
+
+Most new GEMC3 geometry can use the default `active` convention. Detector systems ported from GEMC2 that rely on
+frame rotations should set:
+
+```python
+gvolume.g4placement_type = "passive"
+```
+
+This field is written to SQLite geometry databases. Existing SQLite databases are upgraded with the missing
+column when a geometry script publishes new rows.
+
 Common command-line options accepted by geometry scripts:
 
-| Option | Purpose |
-| --- | --- |
-| `-f`, `--factory` | Select `sqlite` or `ascii` output |
-| `-v`, `--variation` | Select the geometry variation |
-| `-r`, `--run` | Select the run number |
-| `-sql`, `--dbhost` | Select the SQLite file path |
-| `-pv` | Show a PyVista window |
-| `-pvb` | Show a PyVistaQt background plotter |
-| `-pvvtk` | Export a VTK.js `.vtksz` scene |
-| `-pvz` | Set the VTK.js export zoom |
-| `-pvbg` | Set the PyVista background color as a name, hex string, or `r g b` triple |
-| `-pvbgt` | Set the optional PyVista top gradient color; use `none` for a flat background |
+| Option              | Purpose                                                                       |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `-f`, `--factory`   | Select `sqlite` or `ascii` output                                             |
+| `-v`, `--variation` | Select the geometry variation                                                 |
+| `-r`, `--run`       | Select the run number                                                         |
+| `-sql`, `--dbhost`  | Select the SQLite file path                                                   |
+| `-pv`               | Show a PyVista window                                                         |
+| `-pvb`              | Show a PyVistaQt background plotter                                           |
+| `-pvvtk`            | Export a VTK.js `.vtksz` scene                                                |
+| `-pvz`              | Set the VTK.js export zoom                                                    |
+| `-pvbg`             | Set the PyVista background color as a name, hex string, or `r g b` triple    |
+| `-pvbgt`            | Set the optional PyVista top gradient color; use `none` for a flat background |
 
 ## PyVista Visualization
 
@@ -333,14 +369,14 @@ The tests cover CLI behavior and geometry database generation. They intentionall
 
 ## Project Layout
 
-| Path | Purpose |
-| --- | --- |
-| `src/pygemc/api/` | Geometry, materials, units, SQLite output, PyVista support, and templates |
-| `src/pygemc/analyzer/` | CSV/ROOT readers, plotting, and analyzer CLI |
-| `tests/` | Standalone pytest suite |
-| `releases/` | Release notes |
-| `pyproject.toml` | Python packaging metadata and console scripts |
-| `meson.build` | Meson subproject integration used by GEMC |
+| Path                   | Purpose                                                                   |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `src/pygemc/api/`      | Geometry, materials, units, SQLite output, PyVista support, and templates |
+| `src/pygemc/analyzer/` | CSV/ROOT readers, plotting, and analyzer CLI                              |
+| `tests/`               | Standalone pytest suite                                                   |
+| `releases/`            | Release notes                                                             |
+| `pyproject.toml`       | Python packaging metadata and console scripts                             |
+| `meson.build`          | Meson subproject integration used by GEMC                                 |
 
 ## Documentation
 
@@ -349,6 +385,9 @@ The tests cover CLI behavior and geometry database generation. They intentionall
 - [Quickstart](https://gemc.github.io/home/documentation/quickstart/)
 - [Examples](https://gemc.github.io/home/examples/)
 - [GEMC source repository](https://github.com/gemc/src)
+- [CLAS12 GEMC systems repository](https://github.com/gemc/clas12-systems)
+- [Documentation website repository](https://github.com/gemc/home)
+- [GEMC2 / CLAS12 repository](https://github.com/gemc/clas12Tags)
 
 ## Contributing
 

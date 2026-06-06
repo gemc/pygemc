@@ -8,11 +8,7 @@ on:
   push:
     branches: ["main"]
     paths-ignore:
-      - "**/README*"
-      - "**/LICENSE*"
-      - "**/CODE_OF_CONDUCT.md"
-      - "**/CONTRIBUTING.md"
-      - "**/SECURITY.md"
+      - "**/*.md"
 
 jobs:
   trigger-docker-deploy:

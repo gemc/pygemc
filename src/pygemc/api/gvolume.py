@@ -197,29 +197,27 @@ class GVolume:
 			file_name = configuration.geoFileName
 			configuration.nvolumes += 1
 			with open(file_name, 'a+') as dn:
-				fields = [
-					self.name,
-					self.solid,
-					self.parameters,
-					self.material,
-					self.mother,
-					self.position,
-					rotation_string,
-					self.g4placement_type,
-					self.mfield,
-					self.visible,
-					self.style,
-					self.gcolor,  # keep ascii using gcolor as before
-					self.opacity,
-					self.digitization,
-					self.identifier,
-					self.copyOf,
-					self.solidsOpr,
-					self.mirror,
-					self.exist,
-					self.description
-				]
-				lstr = " " + " | ".join(self.entry_to_ascii(f) for f in fields) + " |\n"
+				ea = self.entry_to_ascii
+				lstr  = "%20s  |" % ea(self.name)
+				lstr += "%20s  |" % ea(self.solid)
+				lstr += "%60s  |" % ea(self.parameters)
+				lstr += "%20s  |" % ea(self.material)
+				lstr += "%20s  |" % ea(self.mother)
+				lstr += "%50s  |" % ea(self.position)
+				lstr += "%40s  |" % ea(rotation_string)
+				lstr += "%10s  |" % ea(self.g4placement_type)
+				lstr += "%20s  |" % ea(self.mfield)
+				lstr += "%4s   |" % ea(self.visible)
+				lstr += "%4s   |" % ea(self.style)
+				lstr += "%8s   |" % ea(self.gcolor)
+				lstr += "%5s   |" % ea(self.opacity)
+				lstr += "%20s  |" % ea(self.digitization)
+				lstr += "%40s  |" % ea(self.identifier)
+				lstr += "%20s  |" % ea(self.copyOf)
+				lstr += "%20s  |" % ea(self.solidsOpr)
+				lstr += "%20s  |" % ea(self.mirror)
+				lstr += "%6s   |" % ea(self.exist)
+				lstr += "%30s  |\n" % ea(self.description)
 				dn.write(lstr)
 
 		elif configuration.factory == 'sqlite':
