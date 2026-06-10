@@ -63,9 +63,10 @@ def parse_rotation_string(rotation_str: str) -> np.ndarray:
 	"""Parse a GEMC rotation string and return a 3×3 rotation matrix.
 
 	Handles:
-	  - Simple xyz order:  "10*deg, 45*deg, 30*deg"
-	  - Ordered axes:      "ordered: zxy, 90*deg, 25*deg, 0*deg"
-	  - Compound (add_rotation):  "a1, a2, a3 + b1, b2, b3"
+	  - Simple xyz order:    "10*deg, 45*deg, 30*deg"
+	  - Ordered axes:        "ordered: zxy, 90*deg, 25*deg, 0*deg"
+	  - Double rotation:     "doubleRotation: rx1, ry1, rz1, rx2, ry2, rz2"
+	  - Compound (legacy):   "a1, a2, a3 + b1, b2, b3"
 
 	For ordered strings the first angle corresponds to the first axis listed, etc.
 	Rotations are intrinsic (each axis acts on the already-rotated frame).
@@ -78,6 +79,25 @@ def parse_rotation_string(rotation_str: str) -> np.ndarray:
 	for part in s.split(' + '):
 		part = part.strip()
 		if not part:
+			continue
+
+		if part.startswith('doubleRotation:'):
+			tail = part[len('doubleRotation:'):].strip()
+			tokens = [t.strip() for t in tail.split(',') if t.strip()]
+			angles = []
+			for tok in tokens[:6]:
+				try:
+					angles.append(convert_angle(tok, 'deg'))
+				except Exception:
+					angles.append(0.0)
+			while len(angles) < 6:
+				angles.append(0.0)
+			# Two sequential xyz rotations, left-multiplied to match GEMC C++ rotateX/Y/Z calls
+			# (g4objectsFactory.cc: rotateX(p0), rotateY(p1), rotateZ(p2), rotateX(p3), ...)
+			for axis, ang in zip('xyz', angles[:3]):
+				R = _axis_rotation_matrix(axis, ang) @ R
+			for axis, ang in zip('xyz', angles[3:]):
+				R = _axis_rotation_matrix(axis, ang) @ R
 			continue
 
 		order = 'xyz'

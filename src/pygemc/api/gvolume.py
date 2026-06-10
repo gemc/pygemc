@@ -81,6 +81,8 @@
 #
 # - description		- A description of the volume. Default is "no description"
 import sys
+import copy
+import math
 
 DEFAULTMOTHER = 'root'
 DEFAULTCOLOR = '778899'
@@ -689,6 +691,87 @@ class GVolume:
 		mylengths += str(oradius[-1]) + '*' + lunit1
 		self.parameters = f'{phiStart}*{lunit2}, {phiTotal}*{lunit2}, {nplanes}, {mylengths}'
 
+
+	def distribute_on_circle(self, n, radius, phistart=0, phispan=360,
+	                          align=False, axis='z', lunit='mm', aunit='deg'):
+		"""
+		distribute_on_circle(n, radius, phistart=0, phispan=360, align=False, axis='z',
+		                     lunit='mm', aunit='deg')
+
+		Return n copies of this volume placed at equal angular intervals around a circle.
+
+		Parameters
+		----------
+		n        : number of copies
+		radius   : circle radius
+		phistart : starting angle (default 0)
+		phispan  : total angular span (default 360 — full circle);
+		           step = phispan / n, so the last copy never coincides with the first
+		align    : if True, compose a rotation of phi_i around `axis` with any existing rotation
+		           using GEMC's doubleRotation: format (applied after the template rotation)
+		axis     : axis the circle is perpendicular to — 'x', 'y', or 'z' (default 'z')
+		lunit    : length unit for radius and positions (default 'mm')
+		aunit    : angle unit for phistart, phispan, and alignment rotations (default 'deg')
+
+		The circle plane and position components for each axis:
+		  'z'  →  circle in XY plane:  x = r·cos φ,  y = r·sin φ,  z = 0
+		  'x'  →  circle in YZ plane:  x = 0,         y = r·cos φ,  z = r·sin φ
+		  'y'  →  circle in ZX plane:  x = r·cos φ,  y = 0,         z = r·sin φ
+
+		Returns
+		-------
+		List[GVolume]
+		    Copies named <original_name>_0, <original_name>_1, …
+		    The original volume is not modified.
+		"""
+		if axis not in ('x', 'y', 'z'):
+			sys.exit(f" Error: distribute_on_circle: axis must be 'x', 'y', or 'z', got '{axis}'")
+		if n < 1:
+			sys.exit(f" Error: distribute_on_circle: n must be >= 1, got {n}")
+
+		copies = []
+		for i in range(n):
+			phi = phistart + i * phispan / n
+			phi_rad = math.radians(phi) if aunit == 'deg' else phi
+			c, s = math.cos(phi_rad), math.sin(phi_rad)
+
+			v = copy.deepcopy(self)
+			v.name = f"{self.name}_{i}"
+
+			if axis == 'z':
+				v.set_position(radius * c, radius * s, 0, lunit=lunit)
+			elif axis == 'x':
+				v.set_position(0, radius * c, radius * s, lunit=lunit)
+			else:  # 'y'
+				v.set_position(radius * c, 0, radius * s, lunit=lunit)
+
+			if align:
+				if axis == 'z':
+					align_xyz = (0, 0, phi)
+				elif axis == 'x':
+					align_xyz = (phi, 0, 0)
+				else:  # 'y'
+					align_xyz = (0, phi, 0)
+
+				ax, ay, az = align_xyz
+				align_str = f"{ax}*{aunit}, {ay}*{aunit}, {az}*{aunit}"
+
+				# GEMC's rotation parser accepts only three formats (see g4objectsFactory.cc):
+				#   plain        "rx, ry, rz"           → 3 tokens
+				#   doubleRotation: "rx1, ry1, rz1, rx2, ry2, rz2"  → 7 tokens
+				#   ordered:     "seq, rx, ry, rz"       → 5 tokens
+				# The old add_rotation " + " syntax is NOT supported by GEMC.
+				# When the template has a plain triple, compose using doubleRotation:.
+				# If it already carries a keyword prefix, replace with the alignment only.
+				existing = v.get_rotation_string().strip()
+				if any(existing.startswith(kw) for kw in ("ordered:", "doubleRotation:")):
+					v.set_rotation(*align_xyz, lunit=aunit)
+				else:
+					v.rotations = f"doubleRotation: {existing}, {align_str}"
+
+			copies.append(v)
+
+		return copies
 
 	@classmethod
 	def from_gmesh(cls, gm, length_unit='mm', angle_unit='deg'):
