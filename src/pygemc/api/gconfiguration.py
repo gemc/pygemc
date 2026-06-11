@@ -18,6 +18,7 @@
 #	verbosity	- The log verbosity level for the sci-g API. The default is 0 (print only summary information)
 
 # python
+import math
 import sqlite3
 import os, argparse, sys, json, zipfile
 
@@ -75,6 +76,7 @@ def get_arguments(argv=None):
 	parser.add_argument("-v", "--variation", default="default", help="Set variation")
 	parser.add_argument("-r", "--run", default=1, help="Set run number")
 	parser.add_argument("-sql", "--dbhost", default='gemc.db', help="SQLite filename or MYSQL host")
+	parser.add_argument("--read-yaml", default=None, help="Read extra PyVista configuration from a GEMC YAML file")
 	# pyvista
 	parser.add_argument("-pv", "--pyvista", action="store_true", help="Show geometry using pyvista (needs pyvista)")
 	parser.add_argument(
@@ -91,9 +93,9 @@ def get_arguments(argv=None):
 	                    help="Export PyVista scene as a VTK.js .vtksz file; .vtksz is added if omitted")
 	parser.add_argument("-pvz", "--pyvista-vtksz-zoom", type=float, default=0.25,
 	                    help="Initial VTK.js scene zoom for --pyvista-vtksz; smaller values zoom out")
-	parser.add_argument("-pvbg", "--pyvista-background-color", default="#00122B",
+	parser.add_argument("-pvbg", "--pyvista-background-color", default=None,
 	                    help="Set PyVista background color as a name, hex string, or 'r g b' triple")
-	parser.add_argument("-pvbgt", "--pyvista-background-top", default="none",
+	parser.add_argument("-pvbgt", "--pyvista-background-top", default=None,
 	                    help="Set PyVista top background color for a gradient; use 'none' for a flat background")
 	parser.add_argument("-axes", "--add_axes_at_zero", action="store_true",
 	                    help="Add 10cm axes at (0, 0, 0)")
@@ -122,9 +124,12 @@ class GConfiguration:
 			use_background_plotter: bool = None,
 			pyvista_vtksz: Optional[str] = None,
 	):
-		self.args = get_arguments()  # expose args to scripts that use this class
+		self.args = args if args is not None else get_arguments()  # expose args to scripts that use this class
 		self.experiment = experiment
 		self.system = system
+		self.yaml_pyvista_options = self._read_yaml_pyvista_options(
+			getattr(self.args, "read_yaml", None)
+		)
 		self.runno = self.args.run if self.args.run else runno
 		self.factory = self.args.factory if self.args.factory else factory # Prioritize command-line argument
 		self.variation = self.args.variation if self.args.variation else variation # Prioritize command-line argument
@@ -219,6 +224,168 @@ class GConfiguration:
 
 		return value
 
+	@staticmethod
+	def _strip_yaml_comment(line):
+		quote = None
+		for i, char in enumerate(line):
+			if char in {"'", '"'} and (i == 0 or line[i - 1] != "\\"):
+				if quote is None:
+					quote = char
+				elif quote == char:
+					quote = None
+			elif char == "#" and quote is None:
+				return line[:i]
+		return line
+
+	@classmethod
+	def _parse_yaml_scalar(cls, value):
+		value = cls._strip_yaml_comment(value).strip()
+		if not value:
+			return ""
+		if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+			return value[1:-1]
+		if value.lower() == "true":
+			return True
+		if value.lower() == "false":
+			return False
+		try:
+			return int(value)
+		except ValueError:
+			pass
+		try:
+			return float(value)
+		except ValueError:
+			return value
+
+	@classmethod
+	def _parse_simple_yaml(cls, filename):
+		data = {}
+		current_key = None
+		current_indent = 0
+		current_container = None
+
+		try:
+			with open(filename, encoding="utf-8") as stream:
+				lines = stream.readlines()
+		except OSError as e:
+			sys.exit(f"{GColors.RED}Error reading YAML file {filename}: {e}{GColors.END}")
+
+		for raw_line in lines:
+			line = cls._strip_yaml_comment(raw_line.rstrip("\n"))
+			if not line.strip():
+				continue
+
+			indent = len(line) - len(line.lstrip())
+			stripped = line.strip()
+
+			if indent == 0 and ":" in stripped and not stripped.startswith("- "):
+				key, value = stripped.split(":", 1)
+				current_key = key.strip()
+				current_indent = indent
+				if value.strip():
+					data[current_key] = cls._parse_yaml_scalar(value)
+					current_container = None
+				else:
+					data[current_key] = {}
+					current_container = data[current_key]
+				continue
+
+			if current_key is None or indent <= current_indent:
+				continue
+
+			if stripped.startswith("- "):
+				if not isinstance(data[current_key], list):
+					data[current_key] = []
+					current_container = data[current_key]
+
+				item = stripped[2:].strip()
+				if ":" in item:
+					key, value = item.split(":", 1)
+					data[current_key].append({key.strip(): cls._parse_yaml_scalar(value)})
+				else:
+					data[current_key].append(cls._parse_yaml_scalar(item))
+				continue
+
+			if isinstance(current_container, dict) and ":" in stripped:
+				key, value = stripped.split(":", 1)
+				current_container[key.strip()] = cls._parse_yaml_scalar(value)
+
+		return data
+
+	@staticmethod
+	def _yaml_section_to_dict(section):
+		if isinstance(section, dict):
+			return section
+		if isinstance(section, list):
+			merged = {}
+			for item in section:
+				if isinstance(item, dict):
+					merged.update(item)
+			return merged
+		return {}
+
+	@classmethod
+	def _read_yaml_pyvista_options(cls, filename):
+		if not filename:
+			return {}
+
+		data = cls._parse_simple_yaml(filename)
+		options = {}
+
+		g4camera = cls._yaml_section_to_dict(data.get("g4camera"))
+		if "theta" in g4camera:
+			options["camera_theta"] = g4camera["theta"]
+		if "phi" in g4camera:
+			options["camera_phi"] = g4camera["phi"]
+
+		g4view = cls._yaml_section_to_dict(data.get("g4view"))
+		if "background" in g4view:
+			options["background_color"] = g4view["background"]
+
+		return options
+
+	@staticmethod
+	def _parse_angle_degrees(value):
+		if value is None:
+			return None
+		if isinstance(value, (int, float)):
+			return float(value)
+
+		text = str(value).strip()
+		if not text:
+			return None
+
+		if "*" in text:
+			number, unit = text.split("*", 1)
+			unit = unit.strip().lower()
+			angle = float(number.strip())
+			if unit in {"deg", "degree", "degrees"}:
+				return angle
+			if unit in {"rad", "radian", "radians"}:
+				return math.degrees(angle)
+			return angle
+
+		fields = text.split()
+		if not fields:
+			return None
+
+		angle = float(fields[0])
+		if len(fields) > 1 and fields[1].lower() in {"rad", "radian", "radians"}:
+			return math.degrees(angle)
+		return angle
+
+	@classmethod
+	def _pyvista_camera_angles(cls, options):
+		theta = cls._parse_angle_degrees(options.get("camera_theta"))
+		phi = cls._parse_angle_degrees(options.get("camera_phi"))
+		if theta is None:
+			theta = 90.0
+		if phi is None:
+			phi = 0.0
+		if "camera_phi" in options:
+			phi += 180.0
+		return theta, phi
+
 	@property
 	def plotter(self):
 		if not self.use_pyvista or self.pv is None:
@@ -238,10 +405,13 @@ class GConfiguration:
 
 			self._plotter.add_axes()
 			background = self._parse_pyvista_color(
-				getattr(self.args, "pyvista_background_color", "#00122B")
+				getattr(self.args, "pyvista_background_color", None)
+				or self.yaml_pyvista_options.get("background_color")
+				or "#00122B"
 			)
 			background_top = self._parse_pyvista_color(
-				getattr(self.args, "pyvista_background_top", "none")
+				getattr(self.args, "pyvista_background_top", None)
+				or "none"
 			)
 			if background_top is None:
 				self._plotter.set_background(background)
@@ -606,9 +776,24 @@ class GConfiguration:
 		if scene_len <= 0:
 			scene_len = max(dx, dy, dz, 1.0)
 
-		# View from +X toward the geometry center.
-		# With this view_up, +Z goes left-to-right on screen.
-		direction = _np.array([1.0, 0.0, 0.0])
+		theta, phi = self._pyvista_camera_angles(self.yaml_pyvista_options)
+
+		theta_rad = math.radians(theta)
+		phi_rad = math.radians(phi)
+		direction = _np.array([
+			math.sin(theta_rad) * math.cos(phi_rad),
+			math.sin(theta_rad) * math.sin(phi_rad),
+			math.cos(theta_rad),
+		])
+		direction_norm = _np.linalg.norm(direction)
+		if direction_norm <= 0:
+			direction = _np.array([1.0, 0.0, 0.0])
+		else:
+			direction = direction / direction_norm
+
+		view_up = _np.array([0.0, -1.0, 0.0])
+		if abs(float(_np.dot(direction, view_up))) > 0.98:
+			view_up = _np.array([0.0, 0.0, 1.0])
 
 		# Larger distance_scale = more zoomed out
 		distance = distance_scale * scene_len
@@ -617,7 +802,7 @@ class GConfiguration:
 		cpos = [
 			tuple(position),
 			tuple(center),
-			(0, -1, 0),
+			tuple(view_up),
 		]
 
 		p.camera_position = cpos

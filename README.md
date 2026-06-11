@@ -6,15 +6,17 @@
 [![License: GEMC][license-badge]][license]
 [![GEMC documentation][docs-badge]][docs]
 
-`pygemc` is the Python API used by [GEMC](https://github.com/gemc/src) to define detector geometry, materials, optical properties, mirrors, geometry variations, and lightweight output-analysis workflows. It lets users build GEMC databases with Python scripts, preview geometry with PyVista, and inspect GEMC CSV or ROOT output without writing C++.
+`pygemc` is the Python API used by [GEMC](https://github.com/gemc/src) to define detector geometry, materials, optical properties, mirrors, 
+and lightweight output-analysis workflows. It lets users build GEMC databases with Python scripts, preview geometry 
+with PyVista, and inspect GEMC CSV or ROOT output without writing C++.
 
-The package is installed as part of the GEMC source build and can also be developed as a standalone Python project.
+The package is installed with pip or as part of the GEMC source build.
 
 ## Features
 
 - Python classes for GEMC geometry and material databases
 - `GVolume` helpers for common Geant4 solids such as boxes, tubes, cones, and trapezoids
-- `GVolume.g4placement_type` to select active `G4Transform3D` placement or passive GEMC2-compatible placement
+- `GVolume.g4placement_type` to select the `G4Transform3D` active or passive constructor
 - `GMaterial` helpers for chemical formulas, fractional-mass mixtures, and optical/scintillation properties
 - `GConfiguration` run, variation, factory, SQLite, ASCII, and PyVista configuration handling
 - `autogeometry()` convenience setup for detector scripts
@@ -27,15 +29,14 @@ The package is installed as part of the GEMC source build and can also be develo
 - Unit conversion helpers for length, angle, time, and energy strings
 - Pytest suite that does not require a compiled `gemc` binary
 
-## Installation
+<br/>
 
-Choose the installation path based on what you need:
+# Installation
 
-- Use PyPI for Python geometry building, PyVista previews, and output analysis without the compiled `gemc` simulator.
-- Build [GEMC from source](https://gemc.github.io/home/installation/#build-and-install-gemc-from-source) for the full Geant4 simulation executable and the bundled `pygemc` Python environment.
-- Use the development install when you are editing `pygemc` itself.
+## Stable PyPI Install
 
-Use a Python virtual environment for direct `pip` installs. On macOS with Homebrew use `/opt/homebrew/bin/python3` to ensure the correct interpreter is used:
+Use a Python virtual environment for direct `pip` installs. 
+On macOS with Homebrew use `/opt/homebrew/bin/python3` to ensure the correct interpreter is used:
 
 ```shell
 /opt/homebrew/bin/python3 -m venv ~/venv/pygemc
@@ -43,75 +44,22 @@ source ~/venv/pygemc/bin/activate
 python -m pip install --upgrade pip
 ```
 
-### Stable PyPI Install
-
 Install [`pygemc` from PyPI](https://pypi.org/project/pygemc/) with:
 
 ```shell
 python -m pip install pygemc
 ```
-
-Update an existing PyPI installation with:
-
-```shell
-python -m pip install --upgrade pygemc
-```
-
 Optional ROOT-file analysis dependencies:
 
 ```shell
 python -m pip install "pygemc[root]"
 ```
 
-Update with optional ROOT-file analysis dependencies enabled:
 
-```shell
-python -m pip install --upgrade "pygemc[root]"
-```
+## Install with GEMC
 
-### Development Snapshot
-
-Install the moving GitHub `dev` prerelease with:
-
-```shell
-python -m pip install "pygemc @ git+https://github.com/gemc/pygemc.git@dev"
-```
-
-Update the GitHub `dev` snapshot with:
-
-```shell
-python -m pip install --upgrade --force-reinstall "pygemc @ git+https://github.com/gemc/pygemc.git@dev"
-```
-
-Use this when you need the latest development version before the next stable PyPI release.
-
-### Local Clone Development Install
-
-Use this when you are editing `pygemc` from a local clone:
-
-```shell
-git clone https://github.com/gemc/pygemc.git
-cd pygemc
-python -m pip install -e ".[dev]"
-```
-
-Optional ROOT-file analysis dependencies for local development:
-
-```shell
-python -m pip install -e ".[dev,root]"
-```
-
-The package requires Python 3.10 or newer and depends on NumPy, VTK, PyVista, PyVistaQt, PyQt6, pandas, and matplotlib.
-
-### Installed with GEMC
-
-When GEMC is built from source, the parent Meson project installs `pygemc` into the GEMC Python environment at `<prefix>/python_env`. Activate that environment before running any `pygemc` tools:
-
-```shell
-source <prefix>/python_env/bin/activate
-```
-
-After activation, the simulator and Python tools are available:
+When GEMC is built from source, pygemc available in your scripts without 
+any activation step or separate pip install and gemc and Python tools are available:
 
 ```shell
 gemc -v
@@ -120,25 +68,9 @@ gemc-sqlite --help
 gemc-analyzer --help
 ```
 
-All subsequent `python` and tool invocations in the shell session will use the GEMC environment's interpreter automatically. To deactivate, run `deactivate`.
+<br/>
 
-### Wiring a local pygemc clone into the GEMC build
-
-By default the GEMC Meson build fetches `pygemc` via `subprojects/pygemc.wrap` into `subprojects/pygemc/`. That
-copy is independent of any local clone, so edits to the clone are not picked up by `meson install` until the
-wrap is re-fetched.
-
-To make `meson install` always use your local clone, replace the fetched directory with a symlink **once**:
-
-```shell
-rm -rf /path/to/gemc/src/subprojects/pygemc
-ln -s /path/to/pygemc /path/to/gemc/src/subprojects/pygemc
-```
-
-Meson resolves a plain directory before the wrap file, so it uses the symlink transparently. Every subsequent
-`meson install` picks up the latest changes from the local clone with no extra steps.
-
-## Quickstart
+# Quickstart
 
 Create a detector template:
 
@@ -188,7 +120,9 @@ Analyze output:
 gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50
 ```
 
-## Geometry API
+<br/>
+
+# Geometry API
 
 Typical geometry scripts create a configuration and publish volumes/materials to it:
 
@@ -216,7 +150,7 @@ flux.set_identifier("box", 2)
 flux.publish(cfg)
 ```
 
-### Placement convention
+## Placement convention
 
 `GVolume.g4placement_type` selects which Geant4 placement convention GEMC should use for a volume:
 
@@ -249,6 +183,7 @@ Common command-line options accepted by geometry scripts:
 | `-pvz`              | Set the VTK.js export zoom                                                    |
 | `-pvbg`             | Set the PyVista background color as a name, hex string, or `r g b` triple    |
 | `-pvbgt`            | Set the optional PyVista top gradient color; use `none` for a flat background |
+| `--read-yaml`       | Read `g4camera` direction and `g4view.background` settings from a GEMC YAML   |
 
 ## PyVista Visualization
 
