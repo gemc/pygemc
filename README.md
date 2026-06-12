@@ -202,91 +202,71 @@ GitHub README pages cannot embed `.vtksz` files directly, so the preview image l
 
 ## Command-Line Tools
 
-### `gemc-system-template`
-
-Generate a detector skeleton:
-
-```shell
-gemc-system-template -s counter
-```
-
-List supported solid snippets:
-
-```shell
-gemc-system-template -sl
-```
-
-Print a volume-construction snippet:
-
-```shell
-gemc-system-template -gv G4Box
-```
-
-Write a snippet to a file:
-
-```shell
-gemc-system-template -gv G4Tubs -write_to geometry.py -geo_sub build_tube
-```
-
-### `gemc-sqlite`
-
-Create a new empty SQLite database with the GEMC geometry and materials schema:
-
-```shell
-gemc-sqlite -n mydetector.sqlite
-```
-
-If the file already exists it is removed and recreated. The resulting database contains two tables — `geometry` and `materials` — with all columns expected by GEMC, ready to be populated by a geometry script using `factory: sqlite`.
-
-Open an existing database and list its volumes:
-
-```shell
-gemc-sqlite -sql mydetector.sqlite -sv
-```
-
-List materials:
-
-```shell
-gemc-sqlite -sql mydetector.sqlite -sm
-```
-
-Filter by experiment, variation, system, or run number:
-
-```shell
-gemc-sqlite -sql mydetector.sqlite -sv -ef examples -vf default -sf counter -rf 1
-```
-
-### `gemc-analyzer`
-
-Summarize an output file:
-
-```shell
-gemc-analyzer counter_t0_digitized.csv --kind csv
-```
-
-Plot a variable:
-
-```shell
-gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50
-```
-
-Plot hit positions in the y-vs-x plane:
-
-```shell
-gemc-analyzer counter_t0_true_info.csv --kind csv --data true_info --plot yvsx --xlim -20 20 --ylim -20 20
-```
-
-Save a figure without opening a GUI:
-
-```shell
-gemc-analyzer out.root E --kind root --detector flux --save energy.png
-```
-
-Analyzer inputs:
-
-- CSV output files or CSV root names
-- ROOT files when `pygemc[root]` dependencies are installed
-- Digitized and true-information data streams
+<table>
+  <thead>
+    <tr>
+      <th>Command</th>
+      <th>What it does</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background-color: #f6f8fa;">
+      <td><code>gemc-system-template -s counter</code></td>
+      <td>Generate a detector skeleton named <code>counter</code>.</td>
+    </tr>
+    <tr>
+      <td><code>gemc-system-template -sl</code></td>
+      <td>List supported Geant4 solid snippets.</td>
+    </tr>
+    <tr style="background-color: #f6f8fa;">
+      <td><code>gemc-system-template -gv G4Box</code></td>
+      <td>Print a volume-construction snippet for a <code>G4Box</code>.</td>
+    </tr>
+    <tr>
+      <td><code>gemc-system-template -gv G4Tubs -write_to geometry.py -geo_sub build_tube</code></td>
+      <td>Write a <code>G4Tubs</code> snippet to <code>geometry.py</code>.</td>
+    </tr>
+    <tr style="background-color: #f6f8fa;">
+      <td><code>gemc-sqlite -n mydetector.sqlite</code></td>
+      <td>Create a new SQLite database with the GEMC geometry and materials schema.</td>
+    </tr>
+    <tr>
+      <td><code>gemc-sqlite -sql mydetector.sqlite -sv</code></td>
+      <td>Open an existing database and list its volumes.</td>
+    </tr>
+    <tr style="background-color: #f6f8fa;">
+      <td><code>gemc-sqlite -sql mydetector.sqlite -sm</code></td>
+      <td>Open an existing database and list its materials.</td>
+    </tr>
+    <tr>
+      <td>
+        <code>gemc-sqlite -sql mydetector.sqlite -sv -ef examples -vf default -sf counter -rf 1</code>
+      </td>
+      <td>Filter listed volumes by experiment, variation, system, and run number.</td>
+    </tr>
+    <tr style="background-color: #f6f8fa;">
+      <td><code>gemc-analyzer counter_t0_digitized.csv --kind csv</code></td>
+      <td>Summarize a GEMC CSV output file.</td>
+    </tr>
+    <tr>
+      <td><code>gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50</code></td>
+      <td>Plot a digitized variable with 50 bins.</td>
+    </tr>
+    <tr style="background-color: #f6f8fa;">
+      <td>
+        <code>
+          gemc-analyzer counter_t0_true_info.csv --kind csv --data true_info --plot yvsx --xlim -20 20
+          --ylim -20 20
+        </code>
+      </td>
+      <td>Plot true hit positions in the y-vs-x plane.</td>
+    </tr>
+    <tr>
+      <td><code>gemc-analyzer out.root E --kind root --detector flux --save energy.png</code></td>
+      <td>Save a ROOT-based analyzer figure without opening a GUI.</td>
+    </tr>
+  </tbody>
+</table>
 
 ## Tests
 
@@ -294,13 +274,17 @@ Run the standalone Python tests:
 
 ```shell
 pytest
+pytest tests/test_analyzer.py
 pytest tests/test_cli.py
+pytest tests/test_gconfiguration_yaml.py
 pytest tests/test_geometry.py
 pytest -v
 pytest -k "sqlite"
 ```
 
-The tests cover CLI behavior and geometry database generation. They intentionally do not require Geant4 or a compiled `gemc` executable; full simulation tests live in the parent GEMC Meson build.
+The tests cover analyzer plotting, CLI behavior, YAML-driven PyVista configuration, and geometry database
+generation. They intentionally do not require Geant4 or a compiled `gemc` executable; full simulation tests live
+in the parent GEMC Meson build.
 
 ## Project Layout
 
