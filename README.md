@@ -187,27 +187,55 @@ Common command-line options accepted by geometry scripts:
 
 ## PyVista Visualization
 
-PyVista support is central to `pygemc`: geometry scripts can display the detector as they build it, open an interactive Qt viewer, or export a `.vtksz` scene that can be published in documentation.
+PyVista support is central to `pygemc`: geometry scripts can display the detector as they build it,
+open an interactive Qt viewer, or export a `.vtksz` scene that can be published in documentation.
 
-| Example     | Preview                                      |
-| ----------- | -------------------------------------------- |
-| B1          | [![B1 PyVista][b1-img]][b1-view]             |
-| B2          | [![B2 PyVista][b2-img]][b2-view]             |
-| Materials   | [![Materials PyVista][materials-img]][materials-view] |
-| Simple Flux | [![Simple Flux PyVista][simple-flux-img]][simple-flux-view] |
+<table>
+  <tr>
+    <th>Example</th>
+    <th>Preview</th>
+  </tr>
+  <tr>
+    <td>B1</td>
+    <td>
+      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/b1/b1.vtksz">
+        <img src="https://gemc.github.io/home/assets/images/examples/b1/gemc_view.png"
+             alt="B1 PyVista" width="180">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>B2</td>
+    <td>
+      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/b2/b2.vtksz">
+        <img src="https://gemc.github.io/home/assets/images/examples/b2/gemc_view.png"
+             alt="B2 PyVista" width="180">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>Materials</td>
+    <td>
+      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/materials/material.vtksz">
+        <img src="https://gemc.github.io/home/assets/images/examples/materials/gemc_view.png"
+             alt="Materials PyVista" width="180">
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>Simple Flux</td>
+    <td>
+      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/simple_flux/simple_flux.vtksz">
+        <img src="https://gemc.github.io/home/assets/images/examples/simple_flux/gemc_view.png"
+             alt="Simple Flux PyVista" width="180">
+      </a>
+    </td>
+  </tr>
+</table>
 
 Open the linked interactive PyVista scenes generated from the GEMC examples.
 
 GitHub README pages cannot embed `.vtksz` files directly, so the preview image links to the hosted VTK.js viewer.
-
-[b1-img]: https://gemc.github.io/home/assets/images/examples/b1/gemv_view.png
-[b1-view]: https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/b1/b1.vtksz
-[b2-img]: https://gemc.github.io/home/assets/images/examples/b2/gemv_view.png
-[b2-view]: https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/b2/b2.vtksz
-[materials-img]: https://gemc.github.io/home/assets/images/examples/materials/gemv_view.png
-[materials-view]: https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/materials/material.vtksz
-[simple-flux-img]: https://gemc.github.io/home/assets/images/examples/simple_flux/gemv_view.png
-[simple-flux-view]: https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=https://gemc.github.io/home/assets/images/examples/simple_flux/simple_flux.vtksz
 
 ## Command-Line Tools
 
