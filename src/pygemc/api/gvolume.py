@@ -604,13 +604,13 @@ class GVolume:
 		"""
 
 		if len(params) == 4:
-			self.make_trap_from_right_angular_wedges(self, *params, lunit1)
+			self.make_trap_from_right_angular_wedges(*params, unit=lunit1)
 		elif len(params) == 11:
 			self.make_general_trapezoid(params[0], params[1], params[2], params[3], params[4],
 			                            params[5], params[6], params[7], params[8], params[9],
 			                            params[10], lunit1, lunit2)
 		elif len(params) == 24:
-			self.make_trap_from_vertices(self, *params, lunit1)
+			self.make_trap_from_vertices(*params, lunit1=lunit1)
 		else:
 			sys.exit(
 				' Error: the G4Trap eight points constructor parameter must be an array with 24 points')
