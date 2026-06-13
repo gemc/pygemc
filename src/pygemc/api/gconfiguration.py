@@ -72,9 +72,11 @@ def _try_import_pyvista() -> bool:
 
 def get_arguments(argv=None):
 	parser = argparse.ArgumentParser(description="GEMC Configuration Utility")
-	parser.add_argument("-f", "--factory", default="sqlite", help="ascii, sqlite")
-	parser.add_argument("-v", "--variation", default="default", help="Set variation")
-	parser.add_argument("-r", "--run", default=1, help="Set run number")
+	# Defaults are None so "flag not provided" is distinguishable from an explicit value;
+	# the effective defaults (sqlite/default/1) live on the GConfiguration constructor.
+	parser.add_argument("-f", "--factory", default=None, help="ascii, sqlite")
+	parser.add_argument("-v", "--variation", default=None, help="Set variation")
+	parser.add_argument("-r", "--run", default=None, help="Set run number")
 	parser.add_argument("-sql", "--dbhost", default='gemc.db', help="SQLite filename or MYSQL host")
 	parser.add_argument("--read-yaml", default=None, help="Read extra PyVista configuration from a GEMC YAML file")
 	# pyvista
@@ -115,8 +117,8 @@ class GConfiguration:
 			self,
 			experiment,
 			system,
-			factory=None,
-			variation=None,
+			factory="sqlite",
+			variation="default",
 			runno=1,
 			verbosity=0,
 			args=None,
@@ -130,9 +132,10 @@ class GConfiguration:
 		self.yaml_pyvista_options = self._read_yaml_pyvista_options(
 			getattr(self.args, "read_yaml", None)
 		)
-		self.runno = self.args.run if self.args.run else runno
-		self.factory = self.args.factory if self.args.factory else factory # Prioritize command-line argument
-		self.variation = self.args.variation if self.args.variation else variation # Prioritize command-line argument
+		# CLI value wins only when actually provided (not None); otherwise honor the constructor value.
+		self.runno = self.args.run if self.args.run is not None else runno
+		self.factory = self.args.factory if self.args.factory is not None else factory
+		self.variation = self.args.variation if self.args.variation is not None else variation
 		self.dbhost = self.args.dbhost
 		self.sqlitedb: sqlite3.Connection = None
 		self.verbosity = verbosity
