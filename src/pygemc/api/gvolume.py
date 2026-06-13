@@ -104,7 +104,7 @@ class GVolume:
 		# optional fields
 		self.mother = DEFAULTMOTHER
 		self.position = '0*mm, 0*mm, 0*mm'
-		self.rotations = ['0*deg, 0*deg, 0*deg']
+		self.rotations = []  # list of "rx, ry, rz" triples; empty means the identity rotation
 		self.g4placement_type = 'active'
 		self.mfield = None
 
@@ -131,10 +131,12 @@ class GVolume:
 			for val in [x, y, z]
 		]
 		string_with_units = ", ".join(with_units)
+		# Replace any prior rotations with this single one. Keep self.rotations a list so a
+		# later add_rotation() can append to it (set_rotation followed by add_rotation must work).
 		if order:
-			self.rotations = f"ordered: {order}, {string_with_units}"
+			self.rotations = [f"ordered: {order}, {string_with_units}"]
 		else:
-			self.rotations = string_with_units
+			self.rotations = [string_with_units]
 
 	def set_position(self, x, y, z, lunit='mm'):
 		myposition = str(x) + '*' + lunit + ', '
@@ -143,16 +145,28 @@ class GVolume:
 		self.position = myposition
 
 	def add_rotation(self, x, y, z, lunit='deg'):
-		myrotation = str(x) + '*' + lunit + ', '
-		myrotation += str(y) + '*' + lunit + ', '
-		myrotation += str(z) + '*' + lunit
-		self.rotations.append(' + ' + myrotation)
+		# Append one ordered X/Y/Z rotation. get_rotation_string() turns the accumulated list
+		# into a form gemc understands (a single triple, or doubleRotation: for two).
+		self.rotations.append(f"{x}*{lunit}, {y}*{lunit}, {z}*{lunit}")
 
 	def get_rotation_string(self):
-		rotation_string = ''
-		for r in self.rotations:
-			rotation_string = rotation_string + r
-		return rotation_string
+		# Some publish/alignment paths assign a pre-flattened rotation string; pass it through.
+		if isinstance(self.rotations, str):
+			return self.rotations.strip()
+		# gemc's rotation parser (G4ObjectsFactory::getRotation) accepts a single "rx, ry, rz"
+		# triple, or two sequential rotations via the "doubleRotation:" prefix. The old
+		# " + "-joined form was silently dropped, so emit a supported form or fail loudly.
+		n = len(self.rotations)
+		if n == 0:
+			return '0*deg, 0*deg, 0*deg'
+		if n == 1:
+			return self.rotations[0]
+		if n == 2:
+			return f"doubleRotation: {self.rotations[0]}, {self.rotations[1]}"
+		sys.exit(
+			f" Error: GVolume '{self.name}' has {n} rotations, but gemc supports at most two "
+			f"(a single ordered rotation or doubleRotation:). Reduce the add_rotation() calls."
+		)
 
 	def check_validity(self):
 		# need to add checking if it's operation instead
