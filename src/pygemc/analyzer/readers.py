@@ -12,6 +12,7 @@ from .dataset import GemcOutput
 CSV_STREAM_SUFFIXES = {
 	"true_info": "_true_info.csv",
 	"digitized": "_digitized.csv",
+	"generated_tracked": "_generated_tracked.csv",
 }
 
 
@@ -50,19 +51,16 @@ def read_csv_output(path: str | Path) -> GemcOutput:
 			frame = _with_track_energy(frame, _matching_digitized_csv(path))
 			output.true_info[path.stem] = frame
 		else:
-			output.digitized[path.stem] = frame
+			getattr(output, stream)[path.stem] = frame
 		return output
 
 	for stream, suffix in CSV_STREAM_SUFFIXES.items():
 		candidate = Path(str(path) + suffix)
 		if candidate.exists():
 			frame = _read_csv_with_fallback(candidate)
-			if stream == "true_info":
-				output.true_info["csv"] = frame
-			else:
-				output.digitized["csv"] = frame
+			getattr(output, stream)["csv"] = frame
 
-	if not output.true_info and not output.digitized:
+	if not any((output.true_info, output.digitized, output.generated_tracked)):
 		raise FileNotFoundError(f"No GEMC CSV files found for '{path}'.")
 
 	_add_track_energy_columns(output)
@@ -163,8 +161,9 @@ def _with_track_energy(frame: pd.DataFrame, digitized: pd.DataFrame | None) -> p
 
 def _classify_csv_stream(path: Path) -> str:
 	name = path.name
-	if name.endswith(CSV_STREAM_SUFFIXES["true_info"]):
-		return "true_info"
+	for stream, suffix in CSV_STREAM_SUFFIXES.items():
+		if name.endswith(suffix):
+			return stream
 	return "digitized"
 
 

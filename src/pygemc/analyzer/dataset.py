@@ -20,6 +20,7 @@ class GemcOutput:
 
 	true_info: FrameMap = field(default_factory=dict)
 	digitized: FrameMap = field(default_factory=dict)
+	generated_tracked: FrameMap = field(default_factory=dict)
 	headers: FrameMap = field(default_factory=dict)
 	source: str | None = None
 
@@ -57,6 +58,16 @@ class GemcOutput:
 
 		return sorted(self._frames_for(data))
 
+	def variables(self, data: str = "digitized", detector: str | None = None) -> list[str]:
+		"""Return the numeric columns available to plot for a stream.
+
+		The ``generated_tracked`` stream exposes the generated particle kinematics
+		such as ``p`` (momentum), ``theta``, and ``phi``.
+		"""
+
+		frame = self.get_frame(data=data, detector=detector)
+		return list(frame.select_dtypes(include="number").columns)
+
 	def summary(self) -> str:
 		"""Return a compact text summary."""
 
@@ -66,6 +77,7 @@ class GemcOutput:
 		for label, frames in (
 			("true_info", self.true_info),
 			("digitized", self.digitized),
+			("generated_tracked", self.generated_tracked),
 			("headers", self.headers),
 		):
 			if frames:
@@ -76,10 +88,13 @@ class GemcOutput:
 		return "\n".join(lines)
 
 	def _frames_for(self, data: str) -> FrameMap:
-		if data == "true_info":
-			return self.true_info
-		if data == "digitized":
-			return self.digitized
-		if data == "headers":
-			return self.headers
-		raise ValueError("data must be one of: 'digitized', 'true_info', 'headers'")
+		streams = {
+			"true_info": self.true_info,
+			"digitized": self.digitized,
+			"generated_tracked": self.generated_tracked,
+			"headers": self.headers,
+		}
+		try:
+			return streams[data]
+		except KeyError:
+			raise ValueError("data must be one of: " + ", ".join(streams)) from None

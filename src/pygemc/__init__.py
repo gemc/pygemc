@@ -15,7 +15,7 @@ from .api import (
 
 # Analyzer names are deferred so geometry-only scripts don't pay the cost
 # of importing pandas / matplotlib / pyvistaqt at startup.
-_ANALYZER_NAMES = {"GemcOutput", "plot_variable", "read_output"}
+_ANALYZER_NAMES = {"GemcOutput", "available_variables", "plot_variable", "read_output"}
 
 __all__ = [
     "GVolume",
@@ -29,6 +29,7 @@ __all__ = [
     "convert_time",
     "convert_energy",
     "GemcOutput",
+    "available_variables",
     "plot_variable",
     "read_output",
 ]

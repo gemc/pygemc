@@ -1,6 +1,6 @@
 """Python helpers for reading and plotting GEMC output."""
 
-__all__ = ["GemcOutput", "plot_variable", "plot_y_vs_x", "read_output"]
+__all__ = ["GemcOutput", "available_variables", "plot_variable", "plot_y_vs_x", "read_output"]
 
 
 def __getattr__(name):
@@ -8,6 +8,10 @@ def __getattr__(name):
 		from .dataset import GemcOutput
 
 		return GemcOutput
+	if name == "available_variables":
+		from .plotting import available_variables
+
+		return available_variables
 	if name == "plot_variable":
 		from .plotting import plot_variable
 

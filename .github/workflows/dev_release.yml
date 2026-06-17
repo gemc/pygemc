@@ -12,7 +12,7 @@ jobs:
   dev-release:
     runs-on: ubuntu-latest
     env:
-      DEVMD_SINCE: "2026-05-23"
+      DEVMD_SINCE: "2026-06-17"
       TAG_NAME: "dev"
       RELEASE_TITLE: "Dev Nightly"
 

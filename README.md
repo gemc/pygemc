@@ -120,6 +120,14 @@ Analyze output:
 gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50
 ```
 
+The quantities available to plot are the numeric columns of the loaded file, so they are only known after the
+data is read — they do not appear in `--help`. Run the analyzer without a variable to print the summary and the
+`plottable <stream>: ...` list for each stream, then pick a name from that list:
+
+```shell
+gemc-analyzer counter_t0_digitized.csv --kind csv
+```
+
 <br/>
 
 # Geometry API
@@ -279,7 +287,7 @@ GitHub README pages cannot embed `.vtksz` files directly, so the preview image l
     </tr>
     <tr style="background-color: #f6f8fa;">
       <td><code>gemc-analyzer counter_t0_digitized.csv --kind csv</code></td>
-      <td>Summarize a GEMC CSV output file.</td>
+      <td>Summarize a GEMC CSV output file and list the plottable quantities per stream.</td>
     </tr>
     <tr>
       <td><code>gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50</code></td>

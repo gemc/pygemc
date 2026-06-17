@@ -23,8 +23,10 @@ DEFAULT_LABELS: Mapping[str, str] = {
 	"E": "Energy (MeV)",
 	"totalE": "Total Energy (MeV)",
 	"p": "Momentum (MeV)",
+	"momentum": "Momentum (MeV)",
 	"theta": "Theta (rad)",
 	"phi": "Phi (rad)",
+	"multiplicity": "Multiplicity",
 	"vx": "Track Vertex X (mm)",
 	"vy": "Track Vertex Y (mm)",
 	"vz": "Track Vertex Z (mm)",
@@ -38,6 +40,7 @@ DEFAULT_LABELS: Mapping[str, str] = {
 }
 
 VARIABLE_ALIASES: Mapping[str, tuple[str, ...]] = {
+	"momentum": ("p",),
 	"E": ("totalE", "etot"),
 	"totalEDeposited": ("totEdep",),
 	"etot": ("totalE",),
@@ -48,6 +51,28 @@ VARIABLE_ALIASES: Mapping[str, tuple[str, ...]] = {
 	"mother_vy": ("mvy",),
 	"mother_vz": ("mvz",),
 }
+
+
+GENERATED_FALLBACK_STREAM = "generated_tracked"
+
+
+def available_variables(
+	output: GemcOutput | pd.DataFrame,
+	*,
+	data: str = "digitized",
+	detector: str | None = None,
+) -> dict[str, str]:
+	"""Return the numeric quantities available to plot, mapped to axis labels.
+
+	``output`` may be a :class:`GemcOutput` or a DataFrame. When it is a
+	``GemcOutput`` the ``data`` stream is selected, for example ``digitized``,
+	``true_info``, or ``generated_tracked``. The ``generated_tracked`` stream
+	exposes the generated particle kinematics such as ``p``, ``theta``, and ``phi``.
+	"""
+
+	frame = output.get_frame(data=data, detector=detector) if isinstance(output, GemcOutput) else output
+	numeric = frame.select_dtypes(include="number").columns
+	return {column: DEFAULT_LABELS.get(column, column) for column in numeric}
 
 
 def plot_variable(
@@ -66,11 +91,16 @@ def plot_variable(
 ) -> tuple[plt.Figure, plt.Axes]:
 	"""Plot a variable selected by string.
 
-	``data`` selects the GEMC stream and should be either ``digitized`` or
-	``true_info`` when ``output`` is a :class:`GemcOutput`.
+	``data`` selects the GEMC stream, one of ``digitized``, ``true_info``, or
+	``generated_tracked`` when ``output`` is a :class:`GemcOutput`. When the
+	selected stream lacks ``variable`` (for example the generated ``theta``,
+	``phi``, or ``p``), the ``generated_tracked`` stream is used as a fallback.
 	"""
 
-	frame = output.get_frame(data=data, detector=detector) if isinstance(output, GemcOutput) else output
+	if isinstance(output, GemcOutput):
+		frame = _select_frame(output, variable, data=data, detector=detector)
+	else:
+		frame = output
 	return plot_histogram(
 		frame,
 		variable,
@@ -235,6 +265,38 @@ def _position_scale(position_unit: str) -> float:
 	if position_unit == "cm":
 		return 0.1
 	raise ValueError("position_unit must be one of: 'mm', 'cm'")
+
+
+def _has_variable(frame: pd.DataFrame, variable: str) -> bool:
+	if variable in frame.columns:
+		return True
+	return any(alias in frame.columns for alias in VARIABLE_ALIASES.get(variable, ()))
+
+
+def _select_frame(output: GemcOutput, variable: str, *, data: str, detector: str | None) -> pd.DataFrame:
+	"""Return the frame to plot ``variable`` from.
+
+	The ``data`` stream is preferred. When it is empty/missing or lacks
+	``variable``, the ``generated_tracked`` stream is used so the generated
+	``p``, ``theta``, and ``phi`` plot even with the default ``data``."""
+
+	try:
+		frame = output.get_frame(data=data, detector=detector)
+	except (ValueError, KeyError):
+		frame = None
+
+	if frame is not None and _has_variable(frame, variable):
+		return frame
+
+	if output.available(GENERATED_FALLBACK_STREAM):
+		candidate = output.get_frame(data=GENERATED_FALLBACK_STREAM)
+		if _has_variable(candidate, variable):
+			return candidate
+
+	if frame is not None:
+		return frame
+	# Nothing matched: re-run the selection so its original error surfaces.
+	return output.get_frame(data=data, detector=detector)
 
 
 def _resolve_variable(frame: pd.DataFrame, variable: str) -> str:

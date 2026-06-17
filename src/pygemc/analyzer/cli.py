@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 	parser.add_argument(
 		"--data",
-		choices=("digitized", "true_info"),
+		choices=("digitized", "true_info", "generated_tracked"),
 		default="digitized",
 		help="Data stream to plot. Default: digitized.",
 	)
@@ -53,13 +53,19 @@ def main(argv: list[str] | None = None) -> None:
 
 		matplotlib.use("Agg")
 
-	from .plotting import plot_variable, plot_y_vs_x
+	from .plotting import available_variables, plot_variable, plot_y_vs_x
 	from .readers import read_output
 
 	output = read_output(args.path, kind=args.kind)
 
 	if not args.variable and args.plot == "histogram":
 		print(output.summary())
+		for stream in ("digitized", "true_info", "generated_tracked"):
+			if not output.available(stream):
+				continue
+			variables = available_variables(output, data=stream)
+			if variables:
+				print(f"plottable {stream}: " + ", ".join(sorted(variables)))
 		return
 
 	if args.plot == "yvsx":

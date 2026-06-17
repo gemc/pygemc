@@ -6,7 +6,7 @@ echo "[devmd] start"
 FILE="releases/dev.md"
 START="<!-- AUTO-DEVMD:START -->"
 END="<!-- AUTO-DEVMD:END -->"
-SINCE="${DEVMD_SINCE:-2026-05-23}"
+SINCE="${DEVMD_SINCE:-2026-06-17}"
 UNTIL="${DEVMD_UNTIL:-}"
 
 mkdir -p "$(dirname "$FILE")"
