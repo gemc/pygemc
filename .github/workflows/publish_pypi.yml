@@ -15,6 +15,8 @@ on:
         options:
           - pypi
           - testpypi
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -23,24 +25,30 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.repository }}
+    # Published GitHub releases always go to PyPI; skip pre-releases.
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+    environment: ${{ inputs.repository || 'pypi' }}
+    env:
+      # release event -> use the release tag and target PyPI; otherwise use the dispatch inputs
+      REF: ${{ github.event.release.tag_name || inputs.ref }}
+      REPOSITORY: ${{ inputs.repository || 'pypi' }}
 
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.event.release.tag_name || inputs.ref }}
           fetch-depth: 0
 
       - name: Ref must be a stable release tag
         run: |
-          if [[ ! "${{ inputs.ref }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "PyPI publishing is only allowed from stable tags like v0.2.0, not '${{ inputs.ref }}'."
+          if [[ ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "PyPI publishing is only allowed from stable tags like v0.2.0, not '$REF'."
             exit 1
           fi
 
           checked_out_tag="$(git describe --exact-match --tags HEAD)"
-          if [[ "$checked_out_tag" != "${{ inputs.ref }}" ]]; then
-            echo "Checked out '$checked_out_tag', expected '${{ inputs.ref }}'."
+          if [[ "$checked_out_tag" != "$REF" ]]; then
+            echo "Checked out '$checked_out_tag', expected '$REF'."
             exit 1
           fi
 
@@ -59,11 +67,11 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Publish to TestPyPI
-        if: ${{ inputs.repository == 'testpypi' }}
+        if: ${{ env.REPOSITORY == 'testpypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
 
       - name: Publish to PyPI
-        if: ${{ inputs.repository == 'pypi' }}
+        if: ${{ env.REPOSITORY == 'pypi' }}
         uses: pypa/gh-action-pypi-publish@release/v1
