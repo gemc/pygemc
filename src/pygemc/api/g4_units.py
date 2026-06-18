@@ -184,13 +184,13 @@ def convert_length(expr: str, out: str = 'mm') -> float:
     return val_m / LEN_TO_M[out]
 
 def convert_angle(expr: str, out: str = 'deg') -> float:
-    if out not in ANG_TO_RAD and out not in ('deg', 'degree', 'rad'):
+    if out not in ANG_TO_RAD:
         raise ValueError(f"Unknown output angle unit: {out}")
     names = {**ANG_TO_RAD}
     val_rad = _safe_eval(expr, names)
-    if out in ('deg', 'degree'):
-        return val_rad * (180.0 / math.pi)
-    return val_rad
+    # Convert radians to the requested output unit via the conversion table, like convert_length.
+    # The old code only special-cased deg/degree, so out='gon' silently returned radians.
+    return val_rad / ANG_TO_RAD[out]
 
 def convert_time(expr: str, out: str = 'ns') -> float:
     if out not in TIME_TO_S:
