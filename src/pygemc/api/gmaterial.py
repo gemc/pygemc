@@ -173,6 +173,8 @@ class GMaterial():
 
 	def publish(self, configuration):
 		self.check_validity()
+		if hasattr(configuration, "record_current_variation_run"):
+			configuration.record_current_variation_run()
 
 		if configuration.factory == 'ascii':
 			fileName = configuration.matFileName

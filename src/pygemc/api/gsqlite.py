@@ -22,11 +22,6 @@ def main():
 	desc_str = "   gemc sqlite interface\n"
 	sqlitedb: sqlite3.Connection = None
 
-	experiment_filter = ''
-	variation_filter = ''
-	system_filter = ''
-	runno_filter = ''
-
 	what = "*"
 
 	parser = argparse.ArgumentParser(description=desc_str)
@@ -58,37 +53,16 @@ def main():
 	if args.sql != NGIVEN:
 		sqlitedb = sqlite3.connect(args.sql)
 
-	if args.ef:
-		experiment_filter = f" WHERE experiment = '{args.ef}'"
-
-	if args.vf:
-		if args.ef:
-			variation_filter = f" and variation = '{args.vf}'"
-		else:
-			variation_filter = f" WHERE variation = '{args.vf}'"
-
-	if args.sf:
-		if args.vf or args.ef:
-			system_filter = f" and system = '{args.sf}'"
-		else:
-			system_filter = f" WHERE system = '{args.sf}'"
-
-	if args.rf:
-		if args.vf or args.sf or args.ef:
-			runno_filter = f" and run = {args.rf}"
-		else:
-			runno_filter = f' WHERE run = {args.rf}'
-
-	all_filters = experiment_filter + variation_filter + system_filter + runno_filter
+	where_clause, params = _build_where_clause(args)
 
 	if args.what:
 		what = args.what
 
 	if args.sv:
-		show_volumes_from_database(sqlitedb, what, all_filters)
+		show_volumes_from_database(sqlitedb, what, where_clause, params)
 
 	if args.sm:
-		show_materials_from_database(sqlitedb, what, all_filters)
+		show_materials_from_database(sqlitedb, what, where_clause, params)
 
 	# if no argument is given print help
 	if len(sys.argv) == 1:
@@ -121,22 +95,62 @@ def create_new_sqlite_db(filename):
 	print(f"  {GColors.GREEN}Created new SQLite database:{GColors.END} {filename}")
 
 
-def show_volumes_from_database(sqlitedb, what, all_filters):
+def _build_where_clause(args):
+	conditions = []
+	params = []
+
+	for column, value in (
+		("experiment", args.ef),
+		("variation", args.vf),
+		("system", args.sf),
+		("run", args.rf),
+	):
+		if value:
+			conditions.append(f"{column} = ?")
+			params.append(value)
+
+	where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+	return where_clause, params
+
+
+def _validate_columns(sqlitedb, table, what):
+	# Column names cannot be bound as query parameters, so validate them before interpolation.
+	if what.strip() == "*":
+		return "*"
+
+	sql = sqlitedb.cursor()
+	sql.execute(f"SELECT name FROM PRAGMA_TABLE_INFO('{table}');")
+	valid_columns = {row[0] for row in sql.fetchall()}
+	requested_columns = [column.strip() for column in what.split(",")]
+	unknown_columns = [column for column in requested_columns if column not in valid_columns]
+
+	if unknown_columns:
+		sys.exit(
+			f"{GColors.RED}Error: unknown column(s) {unknown_columns} for table '{table}'."
+			f"{GColors.END}"
+		)
+
+	return ", ".join(requested_columns)
+
+
+def show_volumes_from_database(sqlitedb, what, where_clause, params):
 	if sqlitedb is not None:
 		sql = sqlitedb.cursor()
-		query = "SELECT {} FROM geometry {};".format(what, all_filters)
-		print(query)
-		sql.execute(query)
+		columns = _validate_columns(sqlitedb, "geometry", what)
+		query = f"SELECT {columns} FROM geometry{where_clause};"
+		print(query, params)
+		sql.execute(query, params)
 		for row in sql.fetchall():
 			print(row)
 
 
-def show_materials_from_database(sqlitedb, what, all_filters):
+def show_materials_from_database(sqlitedb, what, where_clause, params):
 	if sqlitedb is not None:
 		sql = sqlitedb.cursor()
-		query = "SELECT {} FROM materials {};".format(what, all_filters)
-		print(query)
-		sql.execute(query)
+		columns = _validate_columns(sqlitedb, "materials", what)
+		query = f"SELECT {columns} FROM materials{where_clause};"
+		print(query, params)
+		sql.execute(query, params)
 		for row in sql.fetchall():
 			print(row)
 

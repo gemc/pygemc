@@ -190,6 +190,8 @@ class GVolume:
 
 	def publish(self, configuration):
 		self.check_validity()
+		if hasattr(configuration, "record_current_variation_run"):
+			configuration.record_current_variation_run()
 		self.gcolor = pyvista_color_to_hex(self.color)
 
 		# Flatten rotations first so None/list don't leak through

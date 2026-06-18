@@ -189,6 +189,10 @@ Common command-line options accepted by geometry scripts:
 | `-pvb`              | Show a PyVistaQt background plotter                                           |
 | `-pvvtk`            | Export a VTK.js `.vtksz` scene                                                |
 | `-pvz`              | Set the VTK.js export zoom                                                    |
+| `--pyvista-variation NAME` | Render only one variation in PyVista; defaults to the first rendered variation |
+| `--pyvista-fast`    | Batch PyVista volumes into fewer actors for faster large-geometry rendering   |
+| `--no-pyvista-fast` | Disable automatic PyVista batching                                            |
+| `--pyvista-fast-threshold N` | Auto-enable PyVista batching above `N` rendered volumes              |
 | `-pvbg`             | Set the PyVista background color as a name, hex string, or `r g b` triple    |
 | `-pvbgt`            | Set the optional PyVista top gradient color; use `none` for a flat background |
 | `--read-yaml`       | Read `g4camera` direction and `g4view.background` settings from a GEMC YAML   |
