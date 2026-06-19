@@ -3,7 +3,7 @@
 [![Tests][tests-badge]][tests]
 [![Python][python-badge]][pyproject]
 [![PyPI][pypi-badge]][pypi]
-[![License: GEMC][license-badge]][license]
+[![License: Apache-2.0][license-badge]][license]
 [![GEMC documentation][docs-badge]][docs]
 
 `pygemc` is the Python API used by [GEMC](https://github.com/gemc/src) to define detector geometry, materials, optical properties, mirrors, 
@@ -359,15 +359,16 @@ Keep patches focused and run the relevant pytest targets before opening a pull r
 
 ## License
 
-`pygemc` is distributed under the GEMC Software License, the same license used by the main GEMC source repository. See [`LICENSE.md`](LICENSE.md).
+`pygemc` is licensed under the [Apache License, Version 2.0](LICENSE) — the same license used by the main GEMC
+source repository. See [`NOTICE`](NOTICE) for attribution.
 
 [tests]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml
 [tests-badge]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml/badge.svg
 [python-badge]: https://img.shields.io/badge/python-3.10%2B-blue.svg
 [pypi]: https://pypi.org/project/pygemc/
 [pypi-badge]: https://img.shields.io/pypi/v/pygemc.svg?cacheSeconds=300
-[license]: LICENSE.md
-[license-badge]: https://img.shields.io/badge/license-GEMC-blue.svg
+[license]: LICENSE
+[license-badge]: https://img.shields.io/badge/license-Apache--2.0-blue.svg
 [docs]: https://gemc.github.io/home/
 [docs-badge]: https://img.shields.io/badge/docs-gemc.github.io-blue.svg
 [pyproject]: pyproject.toml

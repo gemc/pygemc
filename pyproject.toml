@@ -7,13 +7,14 @@ name = "pygemc"
 dynamic = ["version"]
 description = "Python API for GEMC geometry definition and output analysis"
 readme = "README.md"
-license = { file = "LICENSE.md" }
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [{ name = "Maurizio Ungaro", email = "ungaro@jlab.org" }]
 keywords = ["geant4", "simulation", "detector", "physics", "gemc"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -49,7 +50,7 @@ source = "vcs"
 tag-pattern = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/", "LICENSE.md"]
+include = ["src/", "LICENSE", "NOTICE"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pygemc"]

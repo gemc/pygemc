@@ -1,0 +1,35 @@
+pygemc — Python API for GEMC (Geant4 Monte-Carlo)
+Copyright 2006-2026 Maurizio Ungaro and Thomas Jefferson National Accelerator
+Facility (Jefferson Lab).
+
+This product includes the GEMC software developed by Maurizio Ungaro at
+Thomas Jefferson National Accelerator Facility (Jefferson Lab).
+
+This software includes voluntary contributions made to the GEMC project.
+
+------------------------------------------------------------------------------
+Third-party dependencies
+------------------------------------------------------------------------------
+pygemc is a pure-Python package. It does not bundle or redistribute its
+dependencies; they are installed separately by pip under their own licenses,
+which you must comply with in addition to the Apache License, Version 2.0 that
+covers pygemc itself. The principal runtime dependencies are:
+
+  - numpy      — BSD-3-Clause
+  - vtk        — BSD-3-Clause
+  - pyvista    — MIT
+  - pyvistaqt  — MIT
+  - pandas     — BSD-3-Clause
+  - matplotlib — Matplotlib License (BSD-style)
+  - PyQt6      — GPL v3 / commercial
+  - uproot     — BSD-3-Clause   (optional, "root" extra)
+  - awkward    — BSD-3-Clause   (optional, "root" extra)
+
+------------------------------------------------------------------------------
+Citation
+------------------------------------------------------------------------------
+If you use GEMC/pygemc in scientific work, please cite (see CITATION.cff):
+
+  M. Ungaro, "Geant4 Monte-Carlo (GEMC) A database-driven simulation program,"
+  EPJ Web of Conferences 295, 05005 (2024).
+  https://doi.org/10.1051/epjconf/202429505005
