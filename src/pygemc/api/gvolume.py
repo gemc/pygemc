@@ -674,7 +674,7 @@ class GVolume:
 		"""
 
 		nplanes = len(zplane)
-		if not len(iradius) == nplanes and not len(oradius) == nplanes:
+		if len(iradius) != nplanes or len(oradius) != nplanes:
 			sys.exit(
 				' Error: the G4Polycone array lengths do not match: zplane=' + str(
 					len(zplane)) + ', iradius=' + str(
