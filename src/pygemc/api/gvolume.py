@@ -104,7 +104,7 @@ class GVolume:
 		# optional fields
 		self.mother = DEFAULTMOTHER
 		self.position = '0*mm, 0*mm, 0*mm'
-		self.rotations = ['0*deg, 0*deg, 0*deg']
+		self.rotations = []  # list of "x, y, z" triples; empty means identity
 		self.g4placement_type = 'active'
 		self.mfield = None
 
@@ -132,9 +132,9 @@ class GVolume:
 		]
 		string_with_units = ", ".join(with_units)
 		if order:
-			self.rotations = f"ordered: {order}, {string_with_units}"
+			self.rotations = [f"ordered: {order}, {string_with_units}"]
 		else:
-			self.rotations = string_with_units
+			self.rotations = [string_with_units]
 
 	def set_position(self, x, y, z, lunit='mm'):
 		myposition = str(x) + '*' + lunit + ', '
@@ -146,13 +146,26 @@ class GVolume:
 		myrotation = str(x) + '*' + lunit + ', '
 		myrotation += str(y) + '*' + lunit + ', '
 		myrotation += str(z) + '*' + lunit
-		self.rotations.append(' + ' + myrotation)
+		self.rotations.append(myrotation)
 
 	def get_rotation_string(self):
-		rotation_string = ''
-		for r in self.rotations:
-			rotation_string = rotation_string + r
-		return rotation_string
+		# self.rotations is a list of clean "x, y, z" triples. Emit a form that
+		# gemc's parser (G4ObjectsFactory::getRotation) actually understands:
+		# the identity when empty, the single triple for one rotation, and the
+		# doubleRotation: form for two. gemc has no syntax for three or more, so
+		# fail loudly instead of silently producing an unrotated volume.
+		# Tolerate an already-flattened string (publish flattens in place).
+		if isinstance(self.rotations, str):
+			return self.rotations
+		if not self.rotations:
+			return '0*deg, 0*deg, 0*deg'
+		if len(self.rotations) == 1:
+			return self.rotations[0]
+		if len(self.rotations) == 2:
+			return f"doubleRotation: {self.rotations[0]}, {self.rotations[1]}"
+		sys.exit(
+			f" Error: GVolume '{self.name}' has {len(self.rotations)} rotations; "
+			"gemc supports at most two (doubleRotation:).")
 
 	def check_validity(self):
 		# need to add checking if it's operation instead
@@ -226,7 +239,7 @@ class GVolume:
 
 		elif configuration.factory == 'sqlite':
 			configuration.nvolumes += 1
-			self.rotations = rotation_string
+			# populate_sqlite_geometry flattens self.rotations to a string before insert
 			orig_color = self.color
 			self.color = self.gcolor  # publish hex into DB 'color' column
 			populate_sqlite_geometry(self, configuration)
@@ -769,7 +782,8 @@ class GVolume:
 				if any(existing.startswith(kw) for kw in ("ordered:", "doubleRotation:")):
 					v.set_rotation(*align_xyz, lunit=aunit)
 				else:
-					v.rotations = f"doubleRotation: {existing}, {align_str}"
+					# Keep the list invariant: two triples render as doubleRotation:.
+					v.rotations = [existing, align_str]
 
 			copies.append(v)
 
