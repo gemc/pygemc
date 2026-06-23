@@ -3,7 +3,7 @@
 [![Tests][tests-badge]][tests]
 [![Python][python-badge]][pyproject]
 [![PyPI][pypi-badge]][pypi]
-[![License: GEMC][license-badge]][license]
+[![License: Apache-2.0][license-badge]][license]
 [![GEMC documentation][docs-badge]][docs]
 
 `pygemc` is the Python API used by [GEMC](https://github.com/gemc/src) to define detector geometry, materials, optical properties, mirrors, 
@@ -120,6 +120,14 @@ Analyze output:
 gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50
 ```
 
+The quantities available to plot are the numeric columns of the loaded file, so they are only known after the
+data is read — they do not appear in `--help`. Run the analyzer without a variable to print the summary and the
+`plottable <stream>: ...` list for each stream, then pick a name from that list:
+
+```shell
+gemc-analyzer counter_t0_digitized.csv --kind csv
+```
+
 <br/>
 
 # Geometry API
@@ -181,6 +189,10 @@ Common command-line options accepted by geometry scripts:
 | `-pvb`              | Show a PyVistaQt background plotter                                           |
 | `-pvvtk`            | Export a VTK.js `.vtksz` scene                                                |
 | `-pvz`              | Set the VTK.js export zoom                                                    |
+| `--pyvista-variation NAME` | Render only one variation in PyVista; defaults to the first rendered variation |
+| `--pyvista-fast`    | Batch PyVista volumes into fewer actors for faster large-geometry rendering   |
+| `--no-pyvista-fast` | Disable automatic PyVista batching                                            |
+| `--pyvista-fast-threshold N` | Auto-enable PyVista batching above `N` rendered volumes              |
 | `-pvbg`             | Set the PyVista background color as a name, hex string, or `r g b` triple    |
 | `-pvbgt`            | Set the optional PyVista top gradient color; use `none` for a flat background |
 | `--read-yaml`       | Read `g4camera` direction and `g4view.background` settings from a GEMC YAML   |
@@ -192,42 +204,38 @@ open an interactive Qt viewer, or export a `.vtksz` scene that can be published 
 
 <table>
   <tr>
-    <th>Example</th>
-    <th>Preview</th>
-  </tr>
-  <tr>
-    <td>B1</td>
     <td>
-      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/b1/b1.vtksz">
+      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/b1/b1.vtksz"
+         target="_blank" rel="noopener noreferrer">
         <img src="https://gemc.github.io/home/assets/images/examples/b1/gemc_view.png"
-             alt="B1 PyVista" width="180">
+             alt="B1 PyVista" width="180"><br>
+        B1
       </a>
     </td>
-  </tr>
-  <tr>
-    <td>B2</td>
     <td>
-      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/b2/b2.vtksz">
+      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/b2/b2.vtksz"
+         target="_blank" rel="noopener noreferrer">
         <img src="https://gemc.github.io/home/assets/images/examples/b2/gemc_view.png"
-             alt="B2 PyVista" width="180">
+             alt="B2 PyVista" width="180"><br>
+        B2
       </a>
     </td>
   </tr>
   <tr>
-    <td>Materials</td>
     <td>
-      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/materials/material.vtksz">
+      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/materials/material.vtksz"
+         target="_blank" rel="noopener noreferrer">
         <img src="https://gemc.github.io/home/assets/images/examples/materials/gemc_view.png"
-             alt="Materials PyVista" width="180">
+             alt="Materials PyVista" width="180"><br>
+        Materials
       </a>
     </td>
-  </tr>
-  <tr>
-    <td>Simple Flux</td>
     <td>
-      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/simple_flux/simple_flux.vtksz">
-        <img src="https://gemc.github.io/home/assets/images/examples/simple_flux/gemc_view.png"
-             alt="Simple Flux PyVista" width="180">
+      <a href="https://gemc.github.io/home/assets/vtkjs-viewer.html?fileURL=/home/assets/images/examples/scintillator_barrel/scintillator_barrel.vtksz"
+         target="_blank" rel="noopener noreferrer">
+        <img src="https://gemc.github.io/home/assets/images/examples/scintillator_barrel/gemc_view.png"
+             alt="Scintillator Barrel PyVista" width="180"><br>
+        Scintillator Barrel
       </a>
     </td>
   </tr>
@@ -283,7 +291,7 @@ GitHub README pages cannot embed `.vtksz` files directly, so the preview image l
     </tr>
     <tr style="background-color: #f6f8fa;">
       <td><code>gemc-analyzer counter_t0_digitized.csv --kind csv</code></td>
-      <td>Summarize a GEMC CSV output file.</td>
+      <td>Summarize a GEMC CSV output file and list the plottable quantities per stream.</td>
     </tr>
     <tr>
       <td><code>gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50</code></td>
@@ -351,15 +359,16 @@ Keep patches focused and run the relevant pytest targets before opening a pull r
 
 ## License
 
-`pygemc` is distributed under the GEMC Software License, the same license used by the main GEMC source repository. See [`LICENSE.md`](LICENSE.md).
+`pygemc` is licensed under the [Apache License, Version 2.0](LICENSE) — the same license used by the main GEMC
+source repository. See [`NOTICE`](NOTICE) for attribution.
 
 [tests]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml
 [tests-badge]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml/badge.svg
 [python-badge]: https://img.shields.io/badge/python-3.10%2B-blue.svg
 [pypi]: https://pypi.org/project/pygemc/
 [pypi-badge]: https://img.shields.io/pypi/v/pygemc.svg?cacheSeconds=300
-[license]: LICENSE.md
-[license-badge]: https://img.shields.io/badge/license-GEMC-blue.svg
+[license]: LICENSE
+[license-badge]: https://img.shields.io/badge/license-Apache--2.0-blue.svg
 [docs]: https://gemc.github.io/home/
 [docs-badge]: https://img.shields.io/badge/docs-gemc.github.io-blue.svg
 [pyproject]: pyproject.toml

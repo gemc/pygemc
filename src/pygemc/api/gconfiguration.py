@@ -72,11 +72,10 @@ def _try_import_pyvista() -> bool:
 
 def get_arguments(argv=None):
 	parser = argparse.ArgumentParser(description="GEMC Configuration Utility")
-	# Defaults are None so "flag not provided" is distinguishable from an explicit value;
-	# the effective defaults (sqlite/default/1) live on the GConfiguration constructor.
-	parser.add_argument("-f", "--factory", default=None, help="ascii, sqlite")
-	parser.add_argument("-v", "--variation", default=None, help="Set variation")
-	parser.add_argument("-r", "--run", default=None, help="Set run number")
+	parser.add_argument("-f", "--factory", default="sqlite", help="ascii, sqlite")
+	parser.add_argument("-v", "--variation", default="default", help="Set variation")
+	parser.add_argument("-r", "--run", default=1, help="Set run number")
+	parser.add_argument("--verbosity", type=int, default=None, help="Set log verbosity")
 	parser.add_argument("-sql", "--dbhost", default='gemc.db', help="SQLite filename or MYSQL host")
 	parser.add_argument("--read-yaml", default=None, help="Read extra PyVista configuration from a GEMC YAML file")
 	# pyvista
@@ -95,6 +94,27 @@ def get_arguments(argv=None):
 	                    help="Export PyVista scene as a VTK.js .vtksz file; .vtksz is added if omitted")
 	parser.add_argument("-pvz", "--pyvista-vtksz-zoom", type=float, default=0.25,
 	                    help="Initial VTK.js scene zoom for --pyvista-vtksz; smaller values zoom out")
+	parser.add_argument("--pyvista-variation", default=None, help="Only render this variation in PyVista")
+	fast_group = parser.add_mutually_exclusive_group()
+	fast_group.add_argument(
+		"--pyvista-fast",
+		dest="pyvista_fast",
+		action="store_true",
+		default=None,
+		help="Batch PyVista volumes into fewer actors for large geometries",
+	)
+	fast_group.add_argument(
+		"--no-pyvista-fast",
+		dest="pyvista_fast",
+		action="store_false",
+		help="Disable automatic PyVista batching",
+	)
+	parser.add_argument(
+		"--pyvista-fast-threshold",
+		type=int,
+		default=1000,
+		help="Automatically batch PyVista scenes above this volume count",
+	)
 	parser.add_argument("-pvbg", "--pyvista-background-color", default=None,
 	                    help="Set PyVista background color as a name, hex string, or 'r g b' triple")
 	parser.add_argument("-pvbgt", "--pyvista-background-top", default=None,
@@ -138,8 +158,10 @@ class GConfiguration:
 		self.variation = self.args.variation if self.args.variation is not None else variation
 		self.dbhost = self.args.dbhost
 		self.sqlitedb: sqlite3.Connection = None
-		self.verbosity = verbosity
+		args_verbosity = getattr(self.args, "verbosity", None)
+		self.verbosity = verbosity if args_verbosity is None else args_verbosity
 		self.variations: list = []
+		self.variation_runs: dict = {}
 		self.nvolumes = 0
 		self.nmaterials = 0
 		self.geoFileName = None
@@ -164,6 +186,12 @@ class GConfiguration:
 			self.args, "pyvista_vtksz", None
 		)
 		self.pyvista_vtksz_zoom = getattr(self.args, "pyvista_vtksz_zoom", 0.25)
+		self.pyvista_variation = getattr(self.args, "pyvista_variation", None)
+		self.pyvista_fast = getattr(self.args, "pyvista_fast", None)
+		self.pyvista_fast_threshold = getattr(self.args, "pyvista_fast_threshold", 1000)
+		self._pyvista_first_variation = None
+		self._pyvista_render_entries = []
+		self._pyvista_render_entries_flushed = False
 		self.show_pyvista_window = (
 			self.args.pyvista
 			or background_flag
@@ -435,6 +463,14 @@ class GConfiguration:
 
 		return actor
 
+	def flush_pyvista_rendering(self):
+		if not self.use_pyvista:
+			return
+
+		from .pyvista_api import flush_pyvista_rendering
+
+		flush_pyvista_rendering(self)
+
 	def add_origin_axes(self, L=50.0, width=3):
 		if self.pv is None:
 			return
@@ -468,6 +504,8 @@ class GConfiguration:
 			return None
 		if not output.endswith(".vtksz"):
 			output = f"{output}.vtksz"
+
+		self.flush_pyvista_rendering()
 
 		p = self.plotter
 		if p is None:
@@ -637,6 +675,9 @@ class GConfiguration:
 			if reset_storage:
 				self.ensure_ascii_storage_initialized()
 
+	def record_current_variation_run(self):
+		self.variation_runs[self.variation] = self.runno
+
 	# overwrites any existing geometry file.
 	def initialize_storage(self):
 		print()
@@ -700,16 +741,26 @@ class GConfiguration:
 			print(f"    	↦ Materials File: {self.matFileName}")
 			print(f"    	↦ Mirrors File: {self.mirFileName}")
 
-		var_label = "Variation" if len(self.variations) <= 1 else "Variations"
-		var_str = ", ".join(self.variations) if self.variations else self.variation
-		print(f"	▪︎ ({var_label}, Run): ({var_str}, {self.runno})")
+		variations = self.variations if self.variations else [self.variation]
+		print("	▪︎ Variation / Run:")
+		print(f"	    {'Variation':<24} {'Run':>8}")
+		print(f"	    {'-' * 24} {'-' * 8}")
+		for variation in variations:
+			runno = self.variation_runs.get(variation, self.runno)
+			print(f"	    {str(variation):<24} {str(runno):>8}")
 
 		if self.nvolumes > 0:
 			print(f"	▪︎ Number of volumes: {self.nvolumes}")
 		if self.nmaterials > 0:
 			print(f"	▪︎ Number of materials: {self.nmaterials}")
+		if self.use_pyvista:
+			pyvista_variation = self.pyvista_variation or self._pyvista_first_variation
+			if pyvista_variation is None:
+				pyvista_variation = self.variation
+			print(f"	▪︎ PyVista Variation: {pyvista_variation}")
 		print()
 		if self.use_pyvista:
+			self.flush_pyvista_rendering()
 			p = self.plotter
 			if p is not None:
 				# window position/size if available

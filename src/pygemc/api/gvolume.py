@@ -190,6 +190,8 @@ class GVolume:
 
 	def publish(self, configuration):
 		self.check_validity()
+		if hasattr(configuration, "record_current_variation_run"):
+			configuration.record_current_variation_run()
 		self.gcolor = pyvista_color_to_hex(self.color)
 
 		# Flatten rotations first so None/list don't leak through
@@ -604,13 +606,13 @@ class GVolume:
 		"""
 
 		if len(params) == 4:
-			self.make_trap_from_right_angular_wedges(self, *params, lunit1)
+			self.make_trap_from_right_angular_wedges(*params, unit=lunit1)
 		elif len(params) == 11:
 			self.make_general_trapezoid(params[0], params[1], params[2], params[3], params[4],
 			                            params[5], params[6], params[7], params[8], params[9],
 			                            params[10], lunit1, lunit2)
 		elif len(params) == 24:
-			self.make_trap_from_vertices(self, *params, lunit1)
+			self.make_trap_from_vertices(*params, lunit1=lunit1)
 		else:
 			sys.exit(
 				' Error: the G4Trap eight points constructor parameter must be an array with 24 points')
@@ -672,7 +674,7 @@ class GVolume:
 		"""
 
 		nplanes = len(zplane)
-		if not len(iradius) == nplanes and not len(oradius) == nplanes:
+		if len(iradius) != nplanes or len(oradius) != nplanes:
 			sys.exit(
 				' Error: the G4Polycone array lengths do not match: zplane=' + str(
 					len(zplane)) + ', iradius=' + str(

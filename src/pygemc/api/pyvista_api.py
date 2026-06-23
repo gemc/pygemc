@@ -242,129 +242,260 @@ def get_dimensions(gvolume) -> tuple:
 	return convert_list(tokens)
 
 
-def render_volume(gvolume, gconfiguration):
-	if gconfiguration.use_pyvista:
-		metallic = False
-		pcolor = gvolume.color
-		rgb = gvolume.gcolor  # already converted to 'RRGGBB'
-		alpha = gvolume.opacity
-		if pcolor != '778899':  # hardcoded from default
-			if ',' in pcolor:
-				parts = pcolor.split(',')
-				if len(parts) == 2:
-					if parts[0].lower() == 'metallic':
-						metallic = True
-					rgb = parts[1]
-			else:
-				rgb = pcolor
-		pv = gconfiguration.pv
-		T_local = np.array(get_center(gvolume), dtype=float)
-		mstyle = "surface" if gvolume.style in (1, 2) else "wireframe"
-		mlinewidth = 1.0
-		if gvolume.visible == 0:
-			alpha = 0.05  # nearly invisible
-			mstyle = "wireframe"
+def _should_render_pyvista_variation(gconfiguration) -> bool:
+	requested = getattr(gconfiguration, 'pyvista_variation', None)
+	current = getattr(gconfiguration, 'variation', None)
 
-		mesh = None
+	if requested:
+		return current == requested
 
-		# G4Polycone parameters include a unit-less nplanes token that get_dimensions cannot parse;
-		# handle it first with a dedicated parser before the generic pars path.
-		if gvolume.solid == 'G4Polycone':
-			mesh = _add_polycone_from_gvolume(pv, gvolume)
-			pars = ()
+	if not hasattr(gconfiguration, '_pyvista_first_variation'):
+		gconfiguration._pyvista_first_variation = None
+
+	if gconfiguration._pyvista_first_variation is None:
+		gconfiguration._pyvista_first_variation = current
+
+	return current == gconfiguration._pyvista_first_variation
+
+
+def _pyvista_color_and_metallic(gvolume):
+	metallic = False
+	pcolor = gvolume.color
+	rgb = gvolume.gcolor  # already converted to 'RRGGBB'
+	if pcolor != '778899':  # hardcoded from default
+		if ',' in pcolor:
+			parts = pcolor.split(',')
+			if len(parts) == 2:
+				if parts[0].lower() == 'metallic':
+					metallic = True
+				rgb = parts[1]
 		else:
-			pars = get_dimensions(gvolume)
-			if gvolume.solid == 'G4Box':
-				mesh = add_box(pv, pars)
-			elif gvolume.solid == 'G4Cons':
-				mesh = add_cons(pv, pars)
-			elif gvolume.solid == 'G4Tubs':
-				mesh = add_cylinder(pv, pars)
-			elif gvolume.solid == 'G4Trd':
-				mesh = add_trapezoid(pv, pars)
-			elif gvolume.solid == 'G4Trap':
-				mesh = add_general_trap(pv, pars)
-			elif gvolume.solid == 'G4Sphere':
-				mesh = add_sphere(pv, pars)
+			rgb = pcolor
+	return rgb, metallic
 
+
+def _build_volume_mesh(gvolume, gconfiguration):
+	pv = gconfiguration.pv
+
+	if gvolume.solid == 'G4Polycone':
+		return _add_polycone_from_gvolume(pv, gvolume), ()
+
+	pars = get_dimensions(gvolume)
+	if gvolume.solid == 'G4Box':
+		return add_box(pv, pars), pars
+	if gvolume.solid == 'G4Cons':
+		return add_cons(pv, pars), pars
+	if gvolume.solid == 'G4Tubs':
+		return add_cylinder(pv, pars), pars
+	if gvolume.solid == 'G4Trd':
+		return add_trapezoid(pv, pars), pars
+	if gvolume.solid == 'G4Trap':
+		return add_general_trap(pv, pars), pars
+	if gvolume.solid == 'G4Sphere':
+		return add_sphere(pv, pars), pars
+	return None, pars
+
+
+def _world_transform(gvolume, gconfiguration, t_local):
+	# Build F_local: the forward matrix mapping local column vectors to parent column vectors.
+	# passive (G4PVPlacement(&R, T)): Geant4 stores frot=R directly, navigation applies
+	#   p_local = R @ (p_world - T), so p_world = R^T @ p_local + T → F_local = R^T = R_raw.T
+	# active  (G4Transform3D(R, T)): Geant4 inverts the transform, so p_world = R @ p_local + T
+	#   → F_local = R_raw
+	rotation_str = gvolume.get_rotation_string() if hasattr(gvolume, 'get_rotation_string') else ''
+	r_raw = parse_rotation_string(rotation_str)
+	placement_type = getattr(gvolume, 'g4placement_type', 'active')
+	f_local = r_raw.T if placement_type == 'passive' else r_raw
+
+	if not hasattr(gconfiguration, '_world_transforms'):
+		gconfiguration._world_transforms = {}
+
+	mother = getattr(gvolume, 'mother', 'root')
+	if mother in (None, 'root', ''):
+		f_world, t_world = f_local, t_local
+	elif mother in gconfiguration._world_transforms:
+		f_parent, t_parent = gconfiguration._world_transforms[mother]
+		f_world = f_parent @ f_local
+		t_world = t_parent + f_parent @ t_local
+	else:
+		# Mother not yet rendered (unusual ordering) — use local transform only.
+		f_world, t_world = f_local, t_local
+
+	gconfiguration._world_transforms[gvolume.name] = (f_world, t_world)
+	return f_world, t_world
+
+
+def _prepare_volume_render_entry(gvolume, gconfiguration):
+	rgb, metallic = _pyvista_color_and_metallic(gvolume)
+	alpha = gvolume.opacity
+	t_local = np.array(get_center(gvolume), dtype=float)
+	mstyle = "surface" if gvolume.style in (1, 2) else "wireframe"
+	mlinewidth = 1.0
+	if gvolume.visible == 0:
+		alpha = 0.05  # nearly invisible
+		mstyle = "wireframe"
+
+	mesh, pars = _build_volume_mesh(gvolume, gconfiguration)
+
+	if int(getattr(gconfiguration, 'verbosity', 0) or 0) > 0:
 		print(
-			f'Volume: {gvolume.name}, Solid: {gvolume.solid}, Center: {T_local}, '
+			f'Volume: {gvolume.name}, Solid: {gvolume.solid}, Center: {t_local}, '
 			f'Pars: {pars}, Color: {rgb}, Alpha: {alpha}')
 
-		if mesh is None:
+	if mesh is None:
+		return None
+
+	f_world, t_world = _world_transform(gvolume, gconfiguration, t_local)
+
+	# Apply world transform: mesh.points are row vectors → pts @ F_world.T + T_world
+	# applies F_world to each point as a column vector, then translates.
+	world_mesh = mesh.copy()
+	world_mesh.points = mesh.points @ f_world.T + t_world
+
+	flat_solids = {'G4Box', 'G4Trd', 'G4Trap'}
+	return {
+		"mesh": world_mesh,
+		"color": rgb,
+		"opacity": alpha,
+		"style": mstyle,
+		"line_width": mlinewidth,
+		"smooth_shading": gvolume.solid not in flat_solids,
+		"metallic": metallic,
+		"volume_style": gvolume.style,
+		"visible": gvolume.visible,
+		"solid": gvolume.solid,
+	}
+
+
+def _add_detailed_pyvista_entry(gconfiguration, entry):
+	if entry["volume_style"] == 2 and entry["visible"] != 0:
+		actor = gconfiguration.add_mesh(
+			entry["mesh"],
+			color=entry["color"],
+			smooth_shading=entry["smooth_shading"],
+			opacity=min(entry["opacity"], 0.025),
+			style="surface",
+			line_width=1.0,
+		)
+		cloud = cloud_points_from_surface(gconfiguration.pv, entry["mesh"])
+		cloud_actor = gconfiguration.add_mesh(
+			cloud,
+			color=entry["color"],
+			opacity=min(entry["opacity"], 0.18),
+			style="points",
+			point_size=4,
+			render_points_as_spheres=True,
+			lighting=False,
+		)
+		configure_actor_lighting(cloud_actor, metallic=False)
+		configure_actor_lighting(actor, metallic=entry["metallic"])
+		return
+
+	if entry["style"] == "wireframe":
+		# Render only feature edges so triangulated solids show clean outlines.
+		edges = entry["mesh"].extract_feature_edges(
+			feature_angle=30,
+			boundary_edges=True,
+			feature_edges=True,
+			manifold_edges=False,
+			non_manifold_edges=False,
+		)
+		actor = gconfiguration.add_mesh(
+			edges,
+			color=entry["color"],
+			opacity=entry["opacity"],
+			line_width=entry["line_width"],
+		)
+	else:
+		actor = gconfiguration.add_mesh(
+			entry["mesh"],
+			color=entry["color"],
+			smooth_shading=entry["smooth_shading"],
+			opacity=entry["opacity"],
+			style=entry["style"],
+			line_width=entry["line_width"],
+		)
+	configure_actor_lighting(actor, metallic=entry["metallic"])
+
+
+def _combine_pyvista_meshes(pv, meshes):
+	if len(meshes) == 1:
+		return meshes[0]
+	return pv.MultiBlock(meshes).combine(merge_points=False)
+
+
+def _add_fast_pyvista_entries(gconfiguration, entries):
+	batches = {}
+	detailed_entries = []
+	for entry in entries:
+		if entry["volume_style"] == 2 and entry["visible"] != 0:
+			detailed_entries.append(entry)
+			continue
+
+		key = (
+			entry["color"],
+			entry["opacity"],
+			entry["style"],
+			entry["line_width"],
+			entry["smooth_shading"],
+			entry["metallic"],
+			entry["solid"],
+		)
+		batches.setdefault(key, []).append(entry["mesh"])
+
+	for key, meshes in batches.items():
+		color, opacity, style, line_width, smooth_shading, metallic, _solid = key
+		mesh = _combine_pyvista_meshes(gconfiguration.pv, meshes)
+		actor = gconfiguration.add_mesh(
+			mesh,
+			color=color,
+			smooth_shading=smooth_shading,
+			opacity=opacity,
+			style=style,
+			line_width=line_width,
+		)
+		configure_actor_lighting(actor, metallic=metallic)
+
+	for entry in detailed_entries:
+		_add_detailed_pyvista_entry(gconfiguration, entry)
+
+
+def flush_pyvista_rendering(gconfiguration):
+	if getattr(gconfiguration, '_pyvista_render_entries_flushed', False):
+		return
+
+	entries = getattr(gconfiguration, '_pyvista_render_entries', [])
+	if not entries:
+		gconfiguration._pyvista_render_entries_flushed = True
+		return
+
+	fast_setting = getattr(gconfiguration, 'pyvista_fast', None)
+	threshold = getattr(gconfiguration, 'pyvista_fast_threshold', 1000)
+	use_fast = fast_setting is True or (fast_setting is None and len(entries) > threshold)
+
+	if use_fast:
+		_add_fast_pyvista_entries(gconfiguration, entries)
+	else:
+		for entry in entries:
+			_add_detailed_pyvista_entry(gconfiguration, entry)
+
+	gconfiguration._pyvista_render_entries = []
+	gconfiguration._pyvista_render_entries_flushed = True
+
+
+def render_volume(gvolume, gconfiguration):
+	if gconfiguration.use_pyvista:
+		if not _should_render_pyvista_variation(gconfiguration):
 			return
 
-		# Build F_local: the forward matrix mapping local column vectors to parent column vectors.
-		# passive (G4PVPlacement(&R, T)): Geant4 stores frot=R directly, navigation applies
-		#   p_local = R @ (p_world - T), so p_world = R^T @ p_local + T → F_local = R^T = R_raw.T
-		# active  (G4Transform3D(R, T)): Geant4 inverts the transform, so p_world = R @ p_local + T
-		#   → F_local = R_raw
-		rotation_str = gvolume.get_rotation_string() if hasattr(gvolume, 'get_rotation_string') else ''
-		R_raw = parse_rotation_string(rotation_str)
-		placement_type = getattr(gvolume, 'g4placement_type', 'active')
-		F_local = R_raw.T if placement_type == 'passive' else R_raw
+		entry = _prepare_volume_render_entry(gvolume, gconfiguration)
+		if entry is None:
+			return
 
-		if not hasattr(gconfiguration, '_world_transforms'):
-			gconfiguration._world_transforms = {}
-
-		mother = getattr(gvolume, 'mother', 'root')
-		if mother in (None, 'root', ''):
-			F_world, T_world = F_local, T_local
-		elif mother in gconfiguration._world_transforms:
-			F_parent, T_parent = gconfiguration._world_transforms[mother]
-			F_world = F_parent @ F_local
-			T_world = T_parent + F_parent @ T_local
-		else:
-			# Mother not yet rendered (unusual ordering) — use local transform only.
-			F_world, T_world = F_local, T_local
-
-		gconfiguration._world_transforms[gvolume.name] = (F_world, T_world)
-
-		# Apply world transform: mesh.points are row vectors → pts @ F_world.T + T_world
-		# applies F_world to each point as a column vector, then translates.
-		world_mesh = mesh.copy()
-		world_mesh.points = mesh.points @ F_world.T + T_world
-
-		flat_solids = {'G4Box', 'G4Trd', 'G4Trap'}
-		smooth_shading = gvolume.solid not in flat_solids
-
-		if gvolume.style == 2 and gvolume.visible != 0:
-			actor = gconfiguration.add_mesh(
-				world_mesh,
-				color=rgb,
-				smooth_shading=smooth_shading,
-				opacity=min(alpha, 0.025),
-				style="surface",
-				line_width=1.0,
-			)
-			cloud = cloud_points_from_surface(pv, world_mesh)
-			cloud_actor = gconfiguration.add_mesh(
-				cloud,
-				color=rgb,
-				opacity=min(alpha, 0.18),
-				style="points",
-				point_size=4,
-				render_points_as_spheres=True,
-				lighting=False,
-			)
-			configure_actor_lighting(cloud_actor, metallic=False)
-		else:
-			if mstyle == "wireframe":
-				# Render only feature edges so triangulated solids show clean outlines.
-				edges = world_mesh.extract_feature_edges(
-					feature_angle=30,
-					boundary_edges=True,
-					feature_edges=True,
-					manifold_edges=False,
-					non_manifold_edges=False,
-				)
-				actor = gconfiguration.add_mesh(edges, color=rgb, opacity=alpha, line_width=mlinewidth)
-			else:
-				actor = gconfiguration.add_mesh(
-					world_mesh, color=rgb, smooth_shading=smooth_shading,
-					opacity=alpha, style=mstyle, line_width=mlinewidth,
-				)
-		configure_actor_lighting(actor, metallic=metallic)
+		if not hasattr(gconfiguration, '_pyvista_render_entries'):
+			gconfiguration._pyvista_render_entries = []
+		gconfiguration._pyvista_render_entries.append(entry)
+		gconfiguration._pyvista_render_entries_flushed = False
 
 
 def configure_actor_lighting(actor, metallic=False):

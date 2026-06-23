@@ -88,7 +88,8 @@ Reviews may ask for changes to improve correctness, maintainability, performance
 
 ## Licensing and Citation
 
-By contributing, you agree that your contributions are licensed under the GEMC Software License v1.0. See [`LICENSE.md`](LICENSE.md).
+By contributing, you agree that your contributions are licensed under the Apache License, Version 2.0. See
+[`LICENSE`](LICENSE).
 
 If you use GEMC or `pygemc` in scientific work, cite:
 
