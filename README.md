@@ -5,12 +5,14 @@
 [![PyPI][pypi-badge]][pypi]
 [![License: Apache-2.0][license-badge]][license]
 [![GEMC documentation][docs-badge]][docs]
+[![Docker Pulls][dockerhub-badge]][dockerhub]
 
 `pygemc` is the Python API used by [GEMC](https://github.com/gemc/src) to define detector geometry, materials, optical properties, mirrors, 
 and lightweight output-analysis workflows. It lets users build GEMC databases with Python scripts, preview geometry 
 with PyVista, and inspect GEMC CSV or ROOT output without writing C++.
 
-The package is installed with pip or as part of the GEMC source build.
+The package is installed with pip or as part of the GEMC source build. It also ships preinstalled in the GEMC
+Docker images on [Docker Hub](https://hub.docker.com/r/gemc/gemc) (and `ghcr.io/gemc/src`).
 
 ## Features
 
@@ -372,3 +374,5 @@ source repository. See [`NOTICE`](NOTICE) for attribution.
 [docs]: https://gemc.github.io/home/
 [docs-badge]: https://img.shields.io/badge/docs-gemc.github.io-blue.svg
 [pyproject]: pyproject.toml
+[dockerhub]: https://hub.docker.com/r/gemc/gemc
+[dockerhub-badge]: https://img.shields.io/docker/pulls/gemc/gemc.svg
