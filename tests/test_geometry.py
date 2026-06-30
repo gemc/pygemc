@@ -38,6 +38,17 @@ def test_add_rotation_emits_double_rotation_for_two_rotations():
     )
 
 
+def test_add_rotation_after_set_rotation_emits_double_rotation():
+    volume = GVolume("rotated_box")
+
+    volume.set_rotation(0, 0, 40)
+    volume.add_rotation(10, 0, 0)
+
+    assert volume.get_rotation_string() == (
+        "doubleRotation: 0*deg, 0*deg, 40*deg, 10*deg, 0*deg, 0*deg"
+    )
+
+
 def test_add_rotation_rejects_more_than_two_rotations():
     volume = GVolume("rotated_box")
 
