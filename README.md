@@ -130,6 +130,11 @@ data is read — they do not appear in `--help`. Run the analyzer without a vari
 gemc-analyzer counter_t0_digitized.csv --kind csv
 ```
 
+Upcoming in the next release: true-information CSV files containing `pid`, `opid`, and the current and original
+momentum components expose `delta_p`, `delta_theta`, and `delta_phi`. Only rows whose `pid` matches `opid` enter
+these plots; `delta_phi` is wrapped to the interval [-pi, pi]. Select one particle species with `--pid`, for
+example `gemc-analyzer hits_true_info.csv delta_p --data true_info --pid 11`.
+
 <br/>
 
 # Geometry API

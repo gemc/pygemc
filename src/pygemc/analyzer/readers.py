@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from .dataset import GemcOutput
@@ -49,6 +50,7 @@ def read_csv_output(path: str | Path) -> GemcOutput:
 		stream = _classify_csv_stream(path)
 		if stream == "true_info":
 			frame = _with_track_energy(frame, _matching_digitized_csv(path))
+			frame = _with_original_track_deltas(frame)
 			output.true_info[path.stem] = frame
 		else:
 			getattr(output, stream)[path.stem] = frame
@@ -64,6 +66,7 @@ def read_csv_output(path: str | Path) -> GemcOutput:
 		raise FileNotFoundError(f"No GEMC CSV files found for '{path}'.")
 
 	_add_track_energy_columns(output)
+	_add_original_track_delta_columns(output)
 	return output
 
 
@@ -145,6 +148,36 @@ def _add_track_energy_columns(output: GemcOutput) -> None:
 		if digitized is None and len(output.digitized) == 1:
 			digitized = next(iter(output.digitized.values()))
 		output.true_info[name] = _with_track_energy(frame, digitized)
+
+
+def _add_original_track_delta_columns(output: GemcOutput) -> None:
+	for name, frame in list(output.true_info.items()):
+		output.true_info[name] = _with_original_track_deltas(frame)
+
+
+def _with_original_track_deltas(frame: pd.DataFrame) -> pd.DataFrame:
+	required = ("pid", "opid", "px", "py", "pz", "opx", "opy", "opz")
+	if not all(column in frame.columns for column in required):
+		return frame
+
+	values = frame.loc[:, required].apply(pd.to_numeric, errors="coerce")
+	matching_pid = values["pid"] == values["opid"]
+	px, py, pz = (values[column] for column in ("px", "py", "pz"))
+	opx, opy, opz = (values[column] for column in ("opx", "opy", "opz"))
+
+	momentum = np.sqrt(px**2 + py**2 + pz**2)
+	original_momentum = np.sqrt(opx**2 + opy**2 + opz**2)
+	theta = np.arctan2(np.sqrt(px**2 + py**2), pz)
+	original_theta = np.arctan2(np.sqrt(opx**2 + opy**2), opz)
+	phi = np.arctan2(py, px)
+	original_phi = np.arctan2(opy, opx)
+
+	result = frame.copy()
+	result["delta_p"] = (momentum - original_momentum).where(matching_pid)
+	result["delta_theta"] = (theta - original_theta).where(matching_pid)
+	delta_phi = phi - original_phi
+	result["delta_phi"] = ((delta_phi + np.pi) % (2 * np.pi) - np.pi).where(matching_pid)
+	return result
 
 
 def _with_track_energy(frame: pd.DataFrame, digitized: pd.DataFrame | None) -> pd.DataFrame:

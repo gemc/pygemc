@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
 		help="Data stream to plot. Default: digitized.",
 	)
 	parser.add_argument("--detector", help="Detector/tree name to select.")
+	parser.add_argument("--pid", type=int, help="Only plot rows with this particle ID.")
 	parser.add_argument("--bins", type=int, default=30, help="Plot bin count. Default: 30.")
 	parser.add_argument("--x", default="avgx", help="X coordinate column for --plot yvsx. Default: avgx.")
 	parser.add_argument("--y", default="avgy", help="Y coordinate column for --plot yvsx. Default: avgy.")
@@ -46,7 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-	args = build_parser().parse_args(argv)
+	parser = build_parser()
+	args = parser.parse_args(argv)
 
 	if args.save:
 		import matplotlib
@@ -70,25 +72,39 @@ def main(argv: list[str] | None = None) -> None:
 
 	if args.plot == "yvsx":
 		frame = output.get_frame(data=args.data, detector=args.detector)
-		fig, _ = plot_y_vs_x(
-			frame,
-			x=args.x,
-			y=args.y,
-			bins=args.bins,
-			xlim=tuple(args.xlim) if args.xlim else None,
-			ylim=tuple(args.ylim) if args.ylim else None,
-			position_unit=args.position_unit,
-		)
+		try:
+			fig, _ = plot_y_vs_x(
+				frame,
+				x=args.x,
+				y=args.y,
+				bins=args.bins,
+				xlim=tuple(args.xlim) if args.xlim else None,
+				ylim=tuple(args.ylim) if args.ylim else None,
+				position_unit=args.position_unit,
+				pid=args.pid,
+			)
+		except ValueError as exc:
+			print(f"No plot created: {exc}")
+			return
+		except KeyError as exc:
+			parser.error(exc.args[0] if exc.args else str(exc))
 	else:
-		fig, _ = plot_variable(
-			output,
-			args.variable,
-			data=args.data,
-			detector=args.detector,
-			bins=args.bins,
-			xlim=tuple(args.xlim) if args.xlim else None,
-			logy=not args.linear_y,
-		)
+		try:
+			fig, _ = plot_variable(
+				output,
+				args.variable,
+				data=args.data,
+				detector=args.detector,
+				bins=args.bins,
+				xlim=tuple(args.xlim) if args.xlim else None,
+				pid=args.pid,
+				logy=not args.linear_y,
+			)
+		except ValueError as exc:
+			print(f"No plot created: {exc}")
+			return
+		except KeyError as exc:
+			parser.error(exc.args[0] if exc.args else str(exc))
 
 	if args.save:
 		fig.savefig(args.save, bbox_inches="tight")

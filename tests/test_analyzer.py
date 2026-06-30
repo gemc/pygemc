@@ -1,4 +1,5 @@
 import matplotlib
+import numpy as np
 import pandas as pd
 
 matplotlib.use("Agg")
@@ -23,6 +24,17 @@ def test_plot_y_vs_x_uses_cm_limits():
 	assert ax.get_ylim() == (-20.0, 20.0)
 	assert ax.get_xlabel() == "Average X Position [cm]"
 	assert ax.get_ylabel() == "Average Y Position [cm]"
+	fig.clf()
+
+
+def test_plot_y_vs_x_filters_pid():
+	frame = pd.DataFrame(
+		{"avgx": [-100.0, 0.0, 100.0], "avgy": [-50.0, 0.0, 50.0], "pid": [11, 11, 13]}
+	)
+
+	fig, ax = plot_y_vs_x(frame, pid=11)
+
+	assert np.asarray(ax.collections[0].get_array()).sum() == 2
 	fig.clf()
 
 
@@ -104,3 +116,85 @@ def test_analyzer_cli_summary_lists_plottable_quantities(tmp_path, capsys):
 	assert "plottable generated_tracked:" in out
 	assert "theta" in out
 	assert "phi" in out
+
+
+def test_original_track_deltas_are_available_for_matching_pid(tmp_path):
+	csv_path = tmp_path / "hits_true_info.csv"
+	csv_path.write_text(
+		"pid,opid,px,py,pz,opx,opy,opz\n"
+		"11,11,8,0,0,10,0,0\n"
+		f"11,11,{np.cos(np.deg2rad(-179))},{np.sin(np.deg2rad(-179))},0,"
+		f"{np.cos(np.deg2rad(179))},{np.sin(np.deg2rad(179))},0\n"
+		"211,11,0,3,4,0,0,10\n"
+	)
+
+	output = read_output(csv_path, kind="csv")
+	frame = output.get_frame(data="true_info")
+	variables = available_variables(output, data="true_info")
+
+	assert variables["delta_p"] == "Delta Momentum (MeV)"
+	assert variables["delta_theta"] == "Delta Theta (rad)"
+	assert variables["delta_phi"] == "Delta Phi (rad)"
+	assert frame.loc[0, "delta_p"] == -2.0
+	assert np.isclose(frame.loc[1, "delta_phi"], np.deg2rad(2))
+	assert frame.loc[2, ["delta_p", "delta_theta", "delta_phi"]].isna().all()
+
+	fig, ax = plot_variable(output, "delta_p", data="true_info", group_by=None)
+	assert ax.get_xlabel() == "Delta Momentum (MeV)"
+	fig.clf()
+
+
+def test_original_track_deltas_require_complete_csv_quantities(tmp_path):
+	csv_path = tmp_path / "hits_true_info.csv"
+	csv_path.write_text("pid,opid,px,py,pz\n11,11,1,0,0\n")
+
+	output = read_output(csv_path, kind="csv")
+
+	assert "delta_p" not in available_variables(output, data="true_info")
+
+
+def test_plot_variable_filters_original_track_delta_by_pid(tmp_path):
+	csv_path = tmp_path / "hits_true_info.csv"
+	csv_path.write_text(
+		"pid,opid,px,py,pz,opx,opy,opz\n"
+		"11,11,8,0,0,10,0,0\n"
+		"11,11,7,0,0,10,0,0\n"
+		"13,13,6,0,0,10,0,0\n"
+	)
+	output_path = tmp_path / "electron_delta_p.png"
+
+	analyzer_main(
+		[
+			str(csv_path),
+			"delta_p",
+			"--data",
+			"true_info",
+			"--pid",
+			"11",
+			"--save",
+			str(output_path),
+		]
+	)
+
+	assert output_path.exists()
+	fig, ax = plot_variable(read_output(csv_path), "delta_p", data="true_info", pid=11, group_by=None)
+	assert sum(patch.get_height() for patch in ax.patches) == 2
+	fig.clf()
+
+
+def test_analyzer_cli_reports_empty_delta_pid_filter_without_error(tmp_path, capsys):
+	csv_path = tmp_path / "hits_true_info.csv"
+	csv_path.write_text(
+		"pid,opid,px,py,pz,opx,opy,opz\n"
+		"11,2212,1,0,0,0,0,10\n"
+		"2212,2212,0,0,8,0,0,10\n"
+	)
+
+	analyzer_main([str(csv_path), "delta_theta", "--data", "true_info", "--pid", "11"])
+
+	captured = capsys.readouterr()
+	assert (
+		"No plot created: Column 'delta_theta' has no numeric values to plot after filtering pid 11."
+		in captured.out
+	)
+	assert captured.err == ""

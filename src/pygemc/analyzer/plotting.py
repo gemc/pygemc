@@ -26,6 +26,9 @@ DEFAULT_LABELS: Mapping[str, str] = {
 	"momentum": "Momentum (MeV)",
 	"theta": "Theta (rad)",
 	"phi": "Phi (rad)",
+	"delta_p": "Delta Momentum (MeV)",
+	"delta_theta": "Delta Theta (rad)",
+	"delta_phi": "Delta Phi (rad)",
 	"multiplicity": "Multiplicity",
 	"vx": "Track Vertex X (mm)",
 	"vy": "Track Vertex Y (mm)",
@@ -83,6 +86,7 @@ def plot_variable(
 	detector: str | None = None,
 	bins: int = 30,
 	xlim: tuple[float, float] | None = None,
+	pid: int | None = None,
 	group_by: str | None = "pid",
 	logy: bool = True,
 	ax: plt.Axes | None = None,
@@ -95,6 +99,7 @@ def plot_variable(
 	``generated_tracked`` when ``output`` is a :class:`GemcOutput`. When the
 	selected stream lacks ``variable`` (for example the generated ``theta``,
 	``phi``, or ``p``), the ``generated_tracked`` stream is used as a fallback.
+	When ``pid`` is set, only rows with that particle ID are plotted.
 	"""
 
 	if isinstance(output, GemcOutput):
@@ -106,6 +111,7 @@ def plot_variable(
 		variable,
 		bins=bins,
 		xlim=xlim,
+		pid=pid,
 		group_by=group_by,
 		logy=logy,
 		ax=ax,
@@ -123,14 +129,17 @@ def plot_y_vs_x(
 	xlim: tuple[float, float] | None = None,
 	ylim: tuple[float, float] | None = None,
 	position_unit: str = "cm",
+	pid: int | None = None,
 	ax: plt.Axes | None = None,
 	show: bool = False,
 	**hist_kwargs: Any,
 ) -> tuple[plt.Figure, plt.Axes]:
-	"""Plot a 2D hit-position map using ``y`` versus ``x`` coordinates."""
+	"""Plot a 2D hit-position map using ``y`` versus ``x`` coordinates.
 
-	if frame.empty:
-		raise ValueError("Selected data table is empty.")
+	When ``pid`` is set, only rows with that particle ID are plotted.
+	"""
+
+	frame = _filter_pid(frame, pid)
 
 	x = _resolve_variable(frame, x)
 	y = _resolve_variable(frame, y)
@@ -184,22 +193,22 @@ def plot_histogram(
 	*,
 	bins: int = 30,
 	xlim: tuple[float, float] | None = None,
+	pid: int | None = None,
 	group_by: str | None = "pid",
 	logy: bool = True,
 	ax: plt.Axes | None = None,
 	show: bool = False,
 	**hist_kwargs: Any,
 ) -> tuple[plt.Figure, plt.Axes]:
-	"""Plot one numeric variable as a histogram, optionally grouped by a column."""
+	"""Plot one numeric variable as a histogram, optionally grouped by a column and filtered by ``pid``."""
 
+	frame = _filter_pid(frame, pid)
 	variable = _resolve_variable(frame, variable)
-
-	if frame.empty:
-		raise ValueError("Selected data table is empty.")
 
 	values = pd.to_numeric(frame[variable], errors="coerce").dropna()
 	if values.empty:
-		raise ValueError(f"Column '{variable}' has no numeric values to plot.")
+		pid_context = f" after filtering pid {pid}" if pid is not None else ""
+		raise ValueError(f"Column '{variable}' has no numeric values to plot{pid_context}.")
 
 	if ax is None:
 		fig, ax = plt.subplots(figsize=(10, 6))
@@ -265,6 +274,20 @@ def _position_scale(position_unit: str) -> float:
 	if position_unit == "cm":
 		return 0.1
 	raise ValueError("position_unit must be one of: 'mm', 'cm'")
+
+
+def _filter_pid(frame: pd.DataFrame, pid: int | None) -> pd.DataFrame:
+	if pid is None:
+		if frame.empty:
+			raise ValueError("Selected data table is empty.")
+		return frame
+	if "pid" not in frame.columns:
+		raise KeyError("Cannot filter by PID: column 'pid' is not present.")
+
+	filtered = frame.loc[pd.to_numeric(frame["pid"], errors="coerce") == pid]
+	if filtered.empty:
+		raise ValueError(f"No rows match pid {pid}.")
+	return filtered
 
 
 def _has_variable(frame: pd.DataFrame, variable: str) -> bool:
