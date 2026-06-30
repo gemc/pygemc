@@ -12,11 +12,42 @@
 
 import pytest
 from conftest import SOLIDS, run_cli, run_python
+from pygemc.api.gvolume import GVolume
 
 
 # ---------------------------------------------------------------------------
 # Basic system: verify files exist, then build for each format
 # ---------------------------------------------------------------------------
+
+def test_add_rotation_emits_single_triple_for_one_rotation():
+    volume = GVolume("rotated_box")
+
+    volume.add_rotation(0, 0, 40)
+
+    assert volume.get_rotation_string() == "0*deg, 0*deg, 40*deg"
+
+
+def test_add_rotation_emits_double_rotation_for_two_rotations():
+    volume = GVolume("rotated_box")
+
+    volume.add_rotation(0, 0, 40)
+    volume.add_rotation(10, 0, 0)
+
+    assert volume.get_rotation_string() == (
+        "doubleRotation: 0*deg, 0*deg, 40*deg, 10*deg, 0*deg, 0*deg"
+    )
+
+
+def test_add_rotation_rejects_more_than_two_rotations():
+    volume = GVolume("rotated_box")
+
+    volume.add_rotation(0, 0, 40)
+    volume.add_rotation(10, 0, 0)
+    volume.add_rotation(0, 20, 0)
+
+    with pytest.raises(SystemExit, match="supports at most two"):
+        volume.get_rotation_string()
+
 
 def test_create_system(basic_system_dir):
     # basic_system_dir already ran 'gemc-system-template -s test'; just assert.
