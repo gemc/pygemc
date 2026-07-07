@@ -271,7 +271,9 @@ def upload_cad_definitions(cad_file, dbhost, experiment=None, variation=None, ru
 def _upload_configuration(dbhost, experiment, system, variation, run, sqlite3, create_sqlite_database):
 	from .gconfiguration import GConfiguration, get_arguments
 
-	args = get_arguments()
+	# Parse an empty argv so we get the parser defaults without inheriting the
+	# host process's sys.argv (e.g. pytest's -v collides with -v/--variation).
+	args = get_arguments([])
 	args.factory = 'sqlite'
 	args.dbhost = dbhost
 	args.variation = variation

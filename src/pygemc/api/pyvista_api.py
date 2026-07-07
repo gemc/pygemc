@@ -451,20 +451,32 @@ def _add_detailed_pyvista_entry(gconfiguration, entry):
 		return
 
 	if entry["style"] == "wireframe":
-		# Render only feature edges so triangulated solids show clean outlines.
-		edges = entry["mesh"].extract_feature_edges(
-			feature_angle=30,
-			boundary_edges=True,
-			feature_edges=True,
-			manifold_edges=False,
-			non_manifold_edges=False,
-		)
-		actor = gconfiguration.add_mesh(
-			edges,
-			color=entry["color"],
-			opacity=entry["opacity"],
-			line_width=entry["line_width"],
-		)
+		if entry["solid"] == "CAD":
+			# CAD meshes are dense, smoothly-curved triangulations: feature-edge extraction
+			# would discard most edges and leave a sparse outline, so render the full mesh as
+			# a native wireframe (every triangle edge) instead.
+			actor = gconfiguration.add_mesh(
+				entry["mesh"],
+				color=entry["color"],
+				opacity=entry["opacity"],
+				style="wireframe",
+				line_width=entry["line_width"],
+			)
+		else:
+			# Render only feature edges so triangulated primitive solids show clean outlines.
+			edges = entry["mesh"].extract_feature_edges(
+				feature_angle=30,
+				boundary_edges=True,
+				feature_edges=True,
+				manifold_edges=False,
+				non_manifold_edges=False,
+			)
+			actor = gconfiguration.add_mesh(
+				edges,
+				color=entry["color"],
+				opacity=entry["opacity"],
+				line_width=entry["line_width"],
+			)
 	else:
 		actor = gconfiguration.add_mesh(
 			entry["mesh"],
