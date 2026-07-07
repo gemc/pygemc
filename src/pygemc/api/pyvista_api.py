@@ -1,5 +1,6 @@
 from .g4_units import convert_list, convert_angle
 import numpy as np
+import os
 import warnings
 
 
@@ -277,6 +278,9 @@ def _pyvista_color_and_metallic(gvolume):
 def _build_volume_mesh(gvolume, gconfiguration):
 	pv = gconfiguration.pv
 
+	if gvolume.solid == 'CAD':
+		return _load_cad_mesh(pv, gvolume, gconfiguration), ()
+
 	if gvolume.solid == 'G4Polycone':
 		return _add_polycone_from_gvolume(pv, gvolume), ()
 
@@ -294,6 +298,61 @@ def _build_volume_mesh(gvolume, gconfiguration):
 	if gvolume.solid == 'G4Sphere':
 		return add_sphere(pv, pars), pars
 	return None, pars
+
+
+def _load_cad_mesh(pv, gvolume, gconfiguration):
+	path = _resolve_cad_mesh_path(gvolume, gconfiguration)
+	if path is None:
+		if int(getattr(gconfiguration, 'verbosity', 0) or 0) > 0:
+			print(f"Volume: {gvolume.name}, Solid: CAD, mesh not found: {gvolume.description}")
+		return None
+
+	try:
+		mesh = pv.read(path)
+	except Exception as e:
+		if int(getattr(gconfiguration, 'verbosity', 0) or 0) > 0:
+			print(f"Volume: {gvolume.name}, Solid: CAD, could not read mesh {path}: {e}")
+		return None
+
+	scale = _cad_scale(gvolume)
+	if scale != 1.0:
+		mesh = mesh.copy()
+		mesh.points = mesh.points * scale
+	return mesh
+
+
+def _resolve_cad_mesh_path(gvolume, gconfiguration):
+	description = getattr(gvolume, 'description', None)
+	if not description or str(description).upper() == 'NULL':
+		return None
+
+	description = str(description)
+	if os.path.isabs(description) and os.path.exists(description):
+		return description
+
+	candidates = []
+	dbhost = getattr(gconfiguration, 'dbhost', None)
+	if not dbhost and hasattr(gconfiguration, 'args'):
+		dbhost = getattr(gconfiguration.args, 'dbhost', None)
+	if dbhost:
+		candidates.append(os.path.join(os.path.dirname(os.path.abspath(dbhost)), description))
+
+	candidates.append(os.path.abspath(description))
+
+	for candidate in candidates:
+		if os.path.exists(candidate):
+			return candidate
+	return None
+
+
+def _cad_scale(gvolume):
+	raw = getattr(gvolume, 'parameters', None)
+	if raw is None or str(raw).strip().upper() in ('', 'NULL', 'NONE'):
+		return 1.0
+	try:
+		return float(str(raw).strip())
+	except ValueError:
+		return 1.0
 
 
 def _world_transform(gvolume, gconfiguration, t_local):

@@ -30,6 +30,7 @@ dependencies = [
     "pyqt6",
     "pandas",
     "matplotlib",
+    "pymeshlab",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +41,7 @@ dev  = ["pytest", "pytest-cov", "ruff"]
 gemc-analyzer        = "pygemc.analyzer.cli:main"
 gemc-system-template = "pygemc.api.system_template:main"
 gemc-sqlite          = "pygemc.api.gsqlite:main"
+gemc-cure-mesh       = "pygemc.utilities.cure_mesh:main"
 
 [project.urls]
 Homepage   = "https://gemc.github.io/home/"

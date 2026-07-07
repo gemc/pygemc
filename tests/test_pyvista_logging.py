@@ -6,8 +6,8 @@ from pygemc.api import pyvista_api
 
 
 class FakeMesh:
-    def __init__(self, merged_count=1):
-        self.points = np.zeros((8, 3))
+    def __init__(self, merged_count=1, points=None):
+        self.points = np.zeros((8, 3)) if points is None else np.array(points, dtype=float)
         self.merged_count = merged_count
 
     def copy(self):
@@ -28,8 +28,15 @@ class FakeMultiBlock:
 
 
 class FakePv:
+    def __init__(self):
+        self.read_paths = []
+
     def Cube(self, **kwargs):
         return FakeMesh()
+
+    def read(self, path):
+        self.read_paths.append(path)
+        return FakeMesh(points=[[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]])
 
     def MultiBlock(self, meshes):
         return FakeMultiBlock(meshes)
@@ -60,14 +67,17 @@ class FakeConfiguration:
         self.pyvista_variation = pyvista_variation
         self.pyvista_fast = pyvista_fast
         self.pyvista_fast_threshold = pyvista_fast_threshold
+        self.dbhost = None
         self._pyvista_render_entries = []
         self._pyvista_render_entries_flushed = False
         self.add_mesh_calls = 0
         self.added_meshes = []
+        self.add_mesh_kwargs = []
 
     def add_mesh(self, *args, **kwargs):
         self.add_mesh_calls += 1
         self.added_meshes.append(args[0])
+        self.add_mesh_kwargs.append(kwargs)
         return FakeActor()
 
 
@@ -75,6 +85,19 @@ def _box_volume():
     volume = GVolume("box")
     volume.make_box(1, 2, 3)
     volume.material = "G4_AIR"
+    return volume
+
+
+def _cad_volume(mesh_path):
+    volume = GVolume("organ")
+    volume.solid = "CAD"
+    volume.parameters = "2"
+    volume.material = "G4_WATER"
+    volume.position = "1*mm, 2*mm, 3*mm"
+    volume.description = mesh_path
+    volume.color = "ff0000"
+    volume.gcolor = "ff0000"
+    volume.opacity = 0.4
     return volume
 
 
@@ -203,3 +226,38 @@ def test_cli_no_pyvista_fast_is_stored(tmp_path):
     configuration = GConfiguration("examples", "detector", args=args, enable_pyvista=False)
 
     assert configuration.pyvista_fast is False
+
+
+def test_pyvista_loads_cad_mesh_relative_to_sqlite_database(tmp_path):
+    mesh_dir = tmp_path / "stls"
+    mesh_dir.mkdir()
+    mesh = mesh_dir / "organ.stl"
+    mesh.write_text("solid organ\nendsolid organ\n")
+    configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
+    configuration.dbhost = str(tmp_path / "gemc.db")
+
+    pyvista_api.render_volume(_cad_volume("stls/organ.stl"), configuration)
+    pyvista_api.flush_pyvista_rendering(configuration)
+
+    assert configuration.pv.read_paths == [str(mesh)]
+    assert configuration.add_mesh_calls == 1
+    assert np.allclose(
+        configuration.added_meshes[0].points,
+        np.array([[3.0, 2.0, 3.0], [1.0, 6.0, 3.0], [1.0, 2.0, 9.0]]),
+    )
+
+
+def test_pyvista_cad_mesh_uses_modified_display_attributes(tmp_path):
+    mesh = tmp_path / "organ.stl"
+    mesh.write_text("solid organ\nendsolid organ\n")
+    configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
+    volume = _cad_volume(str(mesh))
+    volume.visible = 0
+    volume.style = 0
+
+    pyvista_api.render_volume(volume, configuration)
+    pyvista_api.flush_pyvista_rendering(configuration)
+
+    assert configuration.add_mesh_calls == 1
+    assert configuration.add_mesh_kwargs[0]["color"] == "ff0000"
+    assert configuration.add_mesh_kwargs[0]["opacity"] == 0.05

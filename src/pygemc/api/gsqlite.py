@@ -32,6 +32,14 @@ def main():
 	                    default=NGIVEN)
 	parser.add_argument('-sql', action='store', type=str, help='set the sqlite filename',
 	                    default=NGIVEN)
+	parser.add_argument('-cad', action='store', type=str, default=NGIVEN,
+	                    help='upload CAD volume definitions (YAML/JSON) into the geometry table')
+	parser.add_argument('-experiment', action='store', type=str, default=None,
+	                    help='experiment name for -cad upload (overrides the file)')
+	parser.add_argument('-variation', action='store', type=str, default=None,
+	                    help='variation for -cad upload (overrides the file)')
+	parser.add_argument('-run', action='store', type=int, default=None,
+	                    help='run number for -cad upload (overrides the file)')
 	parser.add_argument('-sv', action='store_true', help='show volumes from database')
 	parser.add_argument('-sm', action='store_true', help='show materials from database')
 	parser.add_argument('-ef', action='store', type=str,
@@ -48,6 +56,13 @@ def main():
 
 	if args.n != NGIVEN:
 		create_new_sqlite_db(args.n)
+		return
+
+	if args.cad != NGIVEN:
+		from .gcad import upload_cad_definitions
+		db_target = args.sql if args.sql != NGIVEN else 'gemc.db'
+		upload_cad_definitions(args.cad, db_target, experiment=args.experiment,
+		                       variation=args.variation, run=args.run)
 		return
 
 	if args.sql != NGIVEN:

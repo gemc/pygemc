@@ -27,6 +27,7 @@ Docker images on [Docker Hub](https://hub.docker.com/r/gemc/gemc) (and `ghcr.io/
 - `gemc-system-template` CLI for generating ready-to-run detector systems
 - Python code snippets for supported Geant4 solid constructors
 - `gemc-sqlite` CLI for creating and inspecting GEMC SQLite database files
+- `gemc-cure-mesh` CLI for simplifying and repairing CAD meshes (STL/PLY/OBJ) for Geant4 tessellated solids
 - `gemc-analyzer` CLI for summarizing and plotting GEMC CSV or ROOT output
 - Unit conversion helpers for length, angle, time, and energy strings
 - Pytest suite that does not require a compiled `gemc` binary
@@ -295,6 +296,10 @@ GitHub README pages cannot embed `.vtksz` files directly, so the preview image l
         <code>gemc-sqlite -sql mydetector.sqlite -sv -ef examples -vf default -sf counter -rf 1</code>
       </td>
       <td>Filter listed volumes by experiment, variation, system, and run number.</td>
+    </tr>
+    <tr style="background-color: #f6f8fa;">
+      <td><code>gemc-cure-mesh organ.stl -o organ.stl -f 15000</code></td>
+      <td>Simplify and repair a CAD mesh (decimate to ~15k facets, weld, close holes, reorient) for Geant4.</td>
     </tr>
     <tr style="background-color: #f6f8fa;">
       <td><code>gemc-analyzer counter_t0_digitized.csv --kind csv</code></td>
