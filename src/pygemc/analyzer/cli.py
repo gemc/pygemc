@@ -20,7 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
 		"--kind",
 		choices=("auto", "csv", "root"),
 		default="auto",
-		help="Input format. Default: auto.",
+		help=argparse.SUPPRESS,
 	)
 	parser.add_argument(
 		"--data",
@@ -43,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 	parser.add_argument("--linear-y", action="store_true", help="Use a linear y axis instead of log scale.")
 	parser.add_argument("--save", type=Path, help="Write the figure to this path instead of showing it.")
+	parser.add_argument("--list", action="store_true", help="Summarize the file and list plottable variables.")
 	return parser
 
 
@@ -55,24 +56,23 @@ def main(argv: list[str] | None = None) -> None:
 
 		matplotlib.use("Agg")
 
-	from .plotting import available_variables, plot_variable, plot_y_vs_x
+	from .plotting import plot_variable, plot_y_vs_x, select_frame_for_variables
 	from .readers import read_output
 
 	output = read_output(args.path, kind=args.kind)
 
-	if not args.variable and args.plot == "histogram":
-		print(output.summary())
-		for stream in ("digitized", "true_info", "generated_tracked"):
-			if not output.available(stream):
-				continue
-			variables = available_variables(output, data=stream)
-			if variables:
-				print(f"plottable {stream}: " + ", ".join(sorted(variables)))
+	if args.list or (not args.variable and args.plot == "histogram"):
+		print_summary(output)
 		return
 
 	if args.plot == "yvsx":
-		frame = output.get_frame(data=args.data, detector=args.detector)
 		try:
+			frame = select_frame_for_variables(
+				output,
+				(args.x, args.y),
+				data=args.data,
+				detector=args.detector,
+			)
 			fig, _ = plot_y_vs_x(
 				frame,
 				x=args.x,
@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> None:
 			parser.error(exc.args[0] if exc.args else str(exc))
 	else:
 		try:
+			if not args.variable:
+				parser.error("a variable is required unless --list is used")
 			fig, _ = plot_variable(
 				output,
 				args.variable,
@@ -112,3 +114,15 @@ def main(argv: list[str] | None = None) -> None:
 		from matplotlib import pyplot as plt
 
 		plt.show()
+
+
+def print_summary(output) -> None:
+	from .plotting import available_variables
+
+	print(output.summary())
+	for stream in ("digitized", "true_info", "generated_tracked"):
+		if not output.available(stream):
+			continue
+		variables = available_variables(output, data=stream)
+		if variables:
+			print(f"plottable {stream}: " + ", ".join(sorted(variables)))

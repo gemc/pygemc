@@ -120,21 +120,23 @@ gemc counter.yaml
 Analyze output:
 
 ```shell
-gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50
+gemc-analyzer counter_t0_digitized.csv totEdep --bins 50
 ```
 
 The quantities available to plot are the numeric columns of the loaded file, so they are only known after the
-data is read — they do not appear in `--help`. Run the analyzer without a variable to print the summary and the
-`plottable <stream>: ...` list for each stream, then pick a name from that list:
+data is read — they do not appear in `--help`. Run the analyzer with just a file name to print the summary,
+including row and event counts where available, plus the `plottable <stream>: ...` list for each stream.
+The explicit `--list` option prints the same summary:
 
 ```shell
-gemc-analyzer counter_t0_digitized.csv --kind csv
+gemc-analyzer counter_t0_digitized.csv
+gemc-analyzer counter_t0_digitized.csv --list
 ```
 
 Upcoming in the next release: true-information CSV files containing `pid`, `opid`, and the current and original
 momentum components expose `delta_p`, `delta_theta`, and `delta_phi`. Only rows whose `pid` matches `opid` enter
 these plots; `delta_phi` is wrapped to the interval [-pi, pi]. Select one particle species with `--pid`, for
-example `gemc-analyzer hits_true_info.csv delta_p --data true_info --pid 11`.
+example `gemc-analyzer hits_true_info.csv delta_p --pid 11`.
 
 <br/>
 
@@ -302,24 +304,23 @@ GitHub README pages cannot embed `.vtksz` files directly, so the preview image l
       <td>Simplify and repair a CAD mesh (decimate to ~15k facets, weld, close holes, reorient) for Geant4.</td>
     </tr>
     <tr style="background-color: #f6f8fa;">
-      <td><code>gemc-analyzer counter_t0_digitized.csv --kind csv</code></td>
+      <td><code>gemc-analyzer counter_t0_digitized.csv</code></td>
       <td>Summarize a GEMC CSV output file and list the plottable quantities per stream.</td>
     </tr>
     <tr>
-      <td><code>gemc-analyzer counter_t0_digitized.csv totEdep --kind csv --bins 50</code></td>
+      <td><code>gemc-analyzer counter_t0_digitized.csv totEdep --bins 50</code></td>
       <td>Plot a digitized variable with 50 bins.</td>
     </tr>
     <tr style="background-color: #f6f8fa;">
       <td>
         <code>
-          gemc-analyzer counter_t0_true_info.csv --kind csv --data true_info --plot yvsx --xlim -20 20
-          --ylim -20 20
+          gemc-analyzer counter_t0_true_info.csv --plot yvsx --xlim -20 20 --ylim -20 20
         </code>
       </td>
       <td>Plot true hit positions in the y-vs-x plane.</td>
     </tr>
     <tr>
-      <td><code>gemc-analyzer out.root E --kind root --detector flux --save energy.png</code></td>
+      <td><code>gemc-analyzer out.root E --detector flux --save energy.png</code></td>
       <td>Save a ROOT-based analyzer figure without opening a GUI.</td>
     </tr>
   </tbody>

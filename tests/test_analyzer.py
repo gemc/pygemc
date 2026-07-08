@@ -46,10 +46,33 @@ def test_analyzer_cli_saves_y_vs_x_plot(tmp_path):
 	analyzer_main(
 		[
 			str(csv_path),
-			"--kind",
-			"csv",
 			"--data",
 			"true_info",
+			"--plot",
+			"yvsx",
+			"--xlim",
+			"-20",
+			"20",
+			"--ylim",
+			"-20",
+			"20",
+			"--save",
+			str(output_path),
+		]
+	)
+
+	assert output_path.exists()
+	assert output_path.stat().st_size > 0
+
+
+def test_analyzer_cli_infers_y_vs_x_stream(tmp_path):
+	csv_path = tmp_path / "hits_t0_true_info.csv"
+	csv_path.write_text("avgx,avgy\n-100,-50\n0,0\n100,50\n")
+	output_path = tmp_path / "hits_y_vs_x.png"
+
+	analyzer_main(
+		[
+			str(csv_path),
 			"--plot",
 			"yvsx",
 			"--xlim",
@@ -110,12 +133,24 @@ def test_analyzer_cli_summary_lists_plottable_quantities(tmp_path, capsys):
 	csv_path = tmp_path / "beam_generated_tracked.csv"
 	csv_path.write_text(GENERATED_TRACKED_CSV)
 
-	analyzer_main([str(csv_path), "--kind", "csv"])
+	analyzer_main([str(csv_path)])
 
 	out = capsys.readouterr().out
+	assert "2 events" in out
 	assert "plottable generated_tracked:" in out
 	assert "theta" in out
 	assert "phi" in out
+
+
+def test_analyzer_cli_list_option_prints_summary(tmp_path, capsys):
+	csv_path = tmp_path / "beam_generated_tracked.csv"
+	csv_path.write_text(GENERATED_TRACKED_CSV)
+
+	analyzer_main([str(csv_path), "--list"])
+
+	out = capsys.readouterr().out
+	assert "source:" in out
+	assert "plottable generated_tracked:" in out
 
 
 def test_original_track_deltas_are_available_for_matching_pid(tmp_path):
@@ -180,6 +215,34 @@ def test_plot_variable_filters_original_track_delta_by_pid(tmp_path):
 	fig, ax = plot_variable(read_output(csv_path), "delta_p", data="true_info", pid=11, group_by=None)
 	assert sum(patch.get_height() for patch in ax.patches) == 2
 	fig.clf()
+
+
+def test_analyzer_cli_finds_variable_across_loaded_streams(tmp_path):
+	csv_path = tmp_path / "hits_true_info.csv"
+	csv_path.write_text("pid,opid,px,py,pz,opx,opy,opz\n11,11,8,0,0,10,0,0\n")
+	output_path = tmp_path / "delta_p.png"
+
+	analyzer_main([str(csv_path), "delta_p", "--pid", "11", "--save", str(output_path)])
+
+	assert output_path.exists()
+	assert output_path.stat().st_size > 0
+
+
+def test_analyzer_cli_missing_variable_reports_available_variables(tmp_path, capsys):
+	csv_path = tmp_path / "hits_true_info.csv"
+	csv_path.write_text("pid,opid,px,py,pz,opx,opy,opz\n11,11,8,0,0,10,0,0\n")
+
+	try:
+		analyzer_main([str(csv_path), "missing"])
+	except SystemExit as exc:
+		assert exc.code == 2
+	else:
+		raise AssertionError("missing variable should exit through argparse")
+
+	err = capsys.readouterr().err
+	assert "Column(s) 'missing' not found." in err
+	assert "Available variables: true_info:" in err
+	assert "delta_p" in err
 
 
 def test_analyzer_cli_reports_empty_delta_pid_filter_without_error(tmp_path, capsys):

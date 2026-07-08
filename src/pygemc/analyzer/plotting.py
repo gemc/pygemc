@@ -56,7 +56,7 @@ VARIABLE_ALIASES: Mapping[str, tuple[str, ...]] = {
 }
 
 
-GENERATED_FALLBACK_STREAM = "generated_tracked"
+STREAM_SEARCH_ORDER = ("digitized", "true_info", "generated_tracked")
 
 
 def available_variables(
@@ -103,7 +103,7 @@ def plot_variable(
 	"""
 
 	if isinstance(output, GemcOutput):
-		frame = _select_frame(output, variable, data=data, detector=detector)
+		frame = select_frame_for_variables(output, variable, data=data, detector=detector)
 	else:
 		frame = output
 	return plot_histogram(
@@ -185,6 +185,46 @@ def plot_y_vs_x(
 		plt.show()
 
 	return fig, ax
+
+
+def select_frame_for_variables(
+	output: GemcOutput,
+	variables: str | tuple[str, ...],
+	*,
+	data: str = "digitized",
+	detector: str | None = None,
+) -> pd.DataFrame:
+	"""Return the first loaded frame containing all requested variables."""
+
+	requested = (variables,) if isinstance(variables, str) else variables
+	selected_error: Exception | None = None
+	try:
+		frame = output.get_frame(data=data, detector=detector)
+	except (ValueError, KeyError) as exc:
+		frame = None
+		selected_error = exc
+
+	if frame is not None and _has_variables(frame, requested):
+		return frame
+
+	for stream in STREAM_SEARCH_ORDER:
+		if stream == data or not output.available(stream):
+			continue
+		try:
+			candidate = output.get_frame(data=stream, detector=detector)
+		except KeyError:
+			continue
+		if _has_variables(candidate, requested):
+			return candidate
+
+	if frame is None:
+		if selected_error is not None:
+			raise selected_error
+		return output.get_frame(data=data, detector=detector)
+
+	missing = ", ".join(f"'{variable}'" for variable in requested if not _has_variable(frame, variable))
+	available = _available_variable_text(output, detector)
+	raise KeyError(f"Column(s) {missing} not found. Available variables: {available}")
 
 
 def plot_histogram(
@@ -296,30 +336,22 @@ def _has_variable(frame: pd.DataFrame, variable: str) -> bool:
 	return any(alias in frame.columns for alias in VARIABLE_ALIASES.get(variable, ()))
 
 
-def _select_frame(output: GemcOutput, variable: str, *, data: str, detector: str | None) -> pd.DataFrame:
-	"""Return the frame to plot ``variable`` from.
+def _has_variables(frame: pd.DataFrame, variables: tuple[str, ...]) -> bool:
+	return all(_has_variable(frame, variable) for variable in variables)
 
-	The ``data`` stream is preferred. When it is empty/missing or lacks
-	``variable``, the ``generated_tracked`` stream is used so the generated
-	``p``, ``theta``, and ``phi`` plot even with the default ``data``."""
 
-	try:
-		frame = output.get_frame(data=data, detector=detector)
-	except (ValueError, KeyError):
-		frame = None
-
-	if frame is not None and _has_variable(frame, variable):
-		return frame
-
-	if output.available(GENERATED_FALLBACK_STREAM):
-		candidate = output.get_frame(data=GENERATED_FALLBACK_STREAM)
-		if _has_variable(candidate, variable):
-			return candidate
-
-	if frame is not None:
-		return frame
-	# Nothing matched: re-run the selection so its original error surfaces.
-	return output.get_frame(data=data, detector=detector)
+def _available_variable_text(output: GemcOutput, detector: str | None) -> str:
+	parts = []
+	for stream in STREAM_SEARCH_ORDER:
+		if not output.available(stream):
+			continue
+		try:
+			variables = available_variables(output, data=stream, detector=detector)
+		except (ValueError, KeyError):
+			continue
+		if variables:
+			parts.append(f"{stream}: " + ", ".join(sorted(variables)))
+	return "; ".join(parts) if parts else "<none>"
 
 
 def _resolve_variable(frame: pd.DataFrame, variable: str) -> str:

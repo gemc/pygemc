@@ -81,7 +81,7 @@ class GemcOutput:
 			("headers", self.headers),
 		):
 			if frames:
-				parts = [f"{name}({len(frame)} rows)" for name, frame in sorted(frames.items())]
+				parts = [f"{name}({_frame_summary(frame)})" for name, frame in sorted(frames.items())]
 				lines.append(f"{label}: " + ", ".join(parts))
 			else:
 				lines.append(f"{label}: <none>")
@@ -98,3 +98,11 @@ class GemcOutput:
 			return streams[data]
 		except KeyError:
 			raise ValueError("data must be one of: " + ", ".join(streams)) from None
+
+
+def _frame_summary(frame: pd.DataFrame) -> str:
+	parts = [f"{len(frame)} rows"]
+	if "evn" in frame.columns:
+		events = pd.to_numeric(frame["evn"], errors="coerce").dropna().nunique()
+		parts.append(f"{events} events")
+	return ", ".join(parts)
