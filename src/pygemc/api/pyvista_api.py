@@ -428,6 +428,9 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 	# drawable volumes, whose placement needs the full transform chain.
 	_register_local_transform(gvolume, gconfiguration)
 
+	if getattr(gvolume, 'exist', 1) == 0 or gvolume.visible == 0:
+		return None
+
 	mesh, pars = _build_volume_mesh(gvolume, gconfiguration)
 
 	if int(getattr(gconfiguration, 'verbosity', 0) or 0) > 0:
@@ -1007,7 +1010,7 @@ def add_paraboloid(pv, pars):
 	poly.points = profile_pts
 	poly.faces = np.array([npts] + list(range(npts)), dtype=np.int64)
 
-	result = poly.extrude_rotate(angle=360.0, resolution=128, capping=True)
+	result = poly.extrude_rotate(angle=360.0, resolution=128, capping=False)
 	result = result.triangulate().clean()
 	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
 	return result
@@ -1038,7 +1041,7 @@ def add_paraboloid_shell(pv, outer_pars, inner_pars):
 	poly.points = profile_pts
 	poly.faces = np.array([npts] + list(range(npts)), dtype=np.int64)
 
-	result = poly.extrude_rotate(angle=360.0, resolution=128, capping=True)
+	result = poly.extrude_rotate(angle=360.0, resolution=128, capping=False)
 	result = result.triangulate().clean()
 	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
 	return result
@@ -1271,7 +1274,183 @@ def _build_direct_boolean_mesh(pv, gvol_a, gvol_b, op):
 	"""Handle boolean pairs whose mesh can be built analytically."""
 	if op == '-' and gvol_a.solid == 'G4Paraboloid' and gvol_b.solid == 'G4Paraboloid':
 		return add_paraboloid_shell(pv, get_dimensions(gvol_a), get_dimensions(gvol_b))
+	if op == '-' and gvol_a.solid == 'G4Box' and gvol_b.solid == 'G4Tubs':
+		return _add_box_minus_tube(pv, gvol_a, gvol_b)
+	if op == '+' and gvol_a.solid == 'G4Box' and gvol_b.solid == 'G4Box':
+		return _add_box_union_box(pv, gvol_a, gvol_b)
 	return None
+
+
+def _box_xy_bounds(dx, dy, f_local=None, t_local=None):
+	"""Return XY bounds for an unrotated or right-angle-rotated box."""
+	corners = np.asarray([
+		[-dx, -dy, 0.0],
+		[dx, -dy, 0.0],
+		[dx, dy, 0.0],
+		[-dx, dy, 0.0],
+	], dtype=float)
+	if f_local is not None:
+		corners = corners @ f_local.T
+	if t_local is not None:
+		corners = corners + t_local
+	xs = corners[:, 0]
+	ys = corners[:, 1]
+	unique_x = sorted({round(float(x), 12) for x in xs})
+	unique_y = sorted({round(float(y), 12) for y in ys})
+	if len(unique_x) != 2 or len(unique_y) != 2:
+		return None
+	return unique_x[0], unique_x[1], unique_y[0], unique_y[1]
+
+
+def _add_box_union_box(pv, box_a, box_b):
+	"""Build a union of two axis-aligned rectangular boxes as one closed mesh."""
+	dims_a = get_dimensions(box_a)
+	dims_b = get_dimensions(box_b)
+	if len(dims_a) < 3 or len(dims_b) < 3:
+		return None
+
+	dxa, dya, dza = dims_a[:3]
+	dxb, dyb, dzb = dims_b[:3]
+	if not np.isclose(dza, dzb, atol=1e-9):
+		return None
+
+	f_b, t_b = _boolean_component_transform(box_b)
+	if abs(t_b[2]) > 1e-9:
+		return None
+
+	bounds_a = _box_xy_bounds(dxa, dya)
+	bounds_b = _box_xy_bounds(dxb, dyb, f_b, t_b)
+	if bounds_a is None or bounds_b is None:
+		return None
+
+	rects = (bounds_a, bounds_b)
+	xs = sorted({round(v, 12) for r in rects for v in (r[0], r[1])})
+	ys = sorted({round(v, 12) for r in rects for v in (r[2], r[3])})
+	cells = []
+	for ix in range(len(xs) - 1):
+		for iy in range(len(ys) - 1):
+			x0, x1 = xs[ix], xs[ix + 1]
+			y0, y1 = ys[iy], ys[iy + 1]
+			cx = 0.5 * (x0 + x1)
+			cy = 0.5 * (y0 + y1)
+			if any(r[0] - 1e-9 <= cx <= r[1] + 1e-9 and
+			       r[2] - 1e-9 <= cy <= r[3] + 1e-9 for r in rects):
+				cells.append((x0, x1, y0, y1))
+
+	points = []
+	point_index = {}
+	face_counts = {}
+
+	def pid(point):
+		key = tuple(round(float(v), 12) for v in point)
+		if key not in point_index:
+			point_index[key] = len(points)
+			points.append(key)
+		return point_index[key]
+
+	def add_face(face_points):
+		ids = [pid(point) for point in face_points]
+		key = tuple(sorted(ids))
+		if key in face_counts:
+			del face_counts[key]
+		else:
+			face_counts[key] = ids
+
+	z0, z1 = -dza, dza
+	for x0, x1, y0, y1 in cells:
+		add_face([(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)])
+		add_face([(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)])
+		add_face([(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)])
+		add_face([(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)])
+		add_face([(x1, y1, z0), (x0, y1, z0), (x0, y1, z1), (x1, y1, z1)])
+		add_face([(x0, y1, z0), (x0, y0, z0), (x0, y0, z1), (x0, y1, z1)])
+
+	encoded_faces = []
+	for face in face_counts.values():
+		encoded_faces.extend([len(face), *face])
+	mesh = pv.PolyData(np.asarray(points, dtype=float), np.asarray(encoded_faces))
+	mesh.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return mesh
+
+
+def _add_box_minus_tube(pv, box_volume, tube_volume):
+	"""Build an unrotated rectangular plate with a full circular through-hole."""
+	box = get_dimensions(box_volume)
+	tube = get_dimensions(tube_volume)
+	if len(box) < 3 or len(tube) < 5:
+		return None
+
+	dx, dy, dz = box[:3]
+	rmin, rmax, hz, phimin, phitotal = tube[:5]
+	if abs(rmin) > 1e-9 or abs(phimin) > 1e-9 or abs(phitotal - 360.0) > 1e-9:
+		return None
+	if hz < dz:
+		return None
+
+	f_b, t_b = _boolean_component_transform(tube_volume)
+	if not np.allclose(f_b, np.eye(3), atol=1e-9):
+		return None
+
+	cx, cy, cz = t_b
+	if abs(cz) > 1e-9:
+		return None
+	if cx - rmax <= -dx or cx + rmax >= dx or cy - rmax <= -dy or cy + rmax >= dy:
+		return None
+
+	def rect_intersection(theta):
+		c, s = np.cos(theta), np.sin(theta)
+		candidates = []
+		if abs(c) > 1e-12:
+			for x in (-dx, dx):
+				u = (x - cx) / c
+				y = cy + u * s
+				if u > 0 and -dy - 1e-9 <= y <= dy + 1e-9:
+					candidates.append((u, x, y))
+		if abs(s) > 1e-12:
+			for y in (-dy, dy):
+				u = (y - cy) / s
+				x = cx + u * c
+				if u > 0 and -dx - 1e-9 <= x <= dx + 1e-9:
+					candidates.append((u, x, y))
+		if not candidates:
+			return None
+		_, x, y = min(candidates, key=lambda item: item[0])
+		return x, y
+
+	corner_angles = [np.arctan2(y - cy, x - cx) for x in (-dx, dx) for y in (-dy, dy)]
+	base_angles = np.linspace(-np.pi, np.pi, 96, endpoint=False)
+	angles = sorted({round(float(a), 12) for a in np.concatenate([base_angles, corner_angles])})
+	n = len(angles)
+	points = []
+	for z in (dz, -dz):
+		for theta in angles:
+			points.append((cx + rmax * np.cos(theta), cy + rmax * np.sin(theta), z))
+		for theta in angles:
+			x, y = rect_intersection(theta)
+			points.append((x, y, z))
+
+	top_ring = 0
+	top_outer = n
+	bottom_ring = 2 * n
+	bottom_outer = 3 * n
+	faces = []
+	for i in range(n):
+		j = (i + 1) % n
+		# top and bottom annular faces
+		faces.extend([[top_ring + i, top_ring + j, top_outer + j],
+		              [top_ring + i, top_outer + j, top_outer + i]])
+		faces.extend([[bottom_ring + i, bottom_outer + j, bottom_ring + j],
+		              [bottom_ring + i, bottom_outer + i, bottom_outer + j]])
+		# inner cylindrical wall and outside box wall
+		faces.append([top_ring + i, bottom_ring + i, bottom_ring + j, top_ring + j])
+		faces.append([top_outer + i, top_outer + j, bottom_outer + j, bottom_outer + i])
+
+	encoded_faces = []
+	for face in faces:
+		encoded_faces.extend([len(face), *face])
+	mesh = pv.PolyData(np.asarray(points, dtype=float), np.asarray(encoded_faces))
+	mesh.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return mesh
 
 
 def _build_boolean_mesh(pv, gvolume, gconfiguration):
