@@ -278,26 +278,38 @@ def _pyvista_color_and_metallic(gvolume):
 def _build_volume_mesh(gvolume, gconfiguration):
 	pv = gconfiguration.pv
 
+	if gvolume.solidsOpr is not None:
+		return _build_boolean_mesh(pv, gvolume, gconfiguration), ()
+
+	# copy volumes have no primitive solid to mesh
+	if gvolume.solid is None or gvolume.copyOf is not None:
+		return None, ()
+
 	if gvolume.solid == 'CAD':
 		return _load_cad_mesh(pv, gvolume, gconfiguration), ()
 
 	if gvolume.solid == 'G4Polycone':
 		return _add_polycone_from_gvolume(pv, gvolume), ()
 
+	if gvolume.solid == 'G4Polyhedra':
+		return _add_polyhedra_from_gvolume(pv, gvolume), ()
+
+	builders = {
+		'G4Box': add_box,
+		'G4Cons': add_cons,
+		'G4Tubs': add_cylinder,
+		'G4Trd': add_trapezoid,
+		'G4Trap': add_general_trap,
+		'G4Sphere': add_sphere,
+		'G4EllipticalTube': add_elliptical_tube,
+	}
+	builder = builders.get(gvolume.solid)
+	if builder is None:
+		# unsupported solid: skip meshing (parameters may carry non-length tokens)
+		return None, ()
+
 	pars = get_dimensions(gvolume)
-	if gvolume.solid == 'G4Box':
-		return add_box(pv, pars), pars
-	if gvolume.solid == 'G4Cons':
-		return add_cons(pv, pars), pars
-	if gvolume.solid == 'G4Tubs':
-		return add_cylinder(pv, pars), pars
-	if gvolume.solid == 'G4Trd':
-		return add_trapezoid(pv, pars), pars
-	if gvolume.solid == 'G4Trap':
-		return add_general_trap(pv, pars), pars
-	if gvolume.solid == 'G4Sphere':
-		return add_sphere(pv, pars), pars
-	return None, pars
+	return builder(pv, pars), pars
 
 
 def _load_cad_mesh(pv, gvolume, gconfiguration):
@@ -394,6 +406,11 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 		alpha = 0.05  # nearly invisible
 		mstyle = "wireframe"
 
+	# Register the world transform before attempting to mesh: volumes that cannot be
+	# drawn (boolean operations, copies, unsupported solids) can still be mothers of
+	# drawable volumes, whose placement needs the full transform chain.
+	f_world, t_world = _world_transform(gvolume, gconfiguration, t_local)
+
 	mesh, pars = _build_volume_mesh(gvolume, gconfiguration)
 
 	if int(getattr(gconfiguration, 'verbosity', 0) or 0) > 0:
@@ -404,7 +421,9 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 	if mesh is None:
 		return None
 
-	f_world, t_world = _world_transform(gvolume, gconfiguration, t_local)
+	# "Component" volumes are boolean construction pieces, not placed volumes
+	if gvolume.material == 'Component':
+		return None
 
 	# Apply world transform: mesh.points are row vectors → pts @ F_world.T + T_world
 	# applies F_world to each point as a column vector, then translates.
@@ -558,6 +577,12 @@ def render_volume(gvolume, gconfiguration):
 	if gconfiguration.use_pyvista:
 		if not _should_render_pyvista_variation(gconfiguration):
 			return
+
+		# register every published volume so boolean operations can look up their
+		# operand solids by name (components are not drawn standalone)
+		if not hasattr(gconfiguration, '_pyvista_gvolumes'):
+			gconfiguration._pyvista_gvolumes = {}
+		gconfiguration._pyvista_gvolumes[gvolume.name] = gvolume
 
 		entry = _prepare_volume_render_entry(gvolume, gconfiguration)
 		if entry is None:
@@ -955,6 +980,147 @@ def add_polycone(pv, phi_start, phi_total, zplane, iradius, oradius):
 		result = result.rotate_z(phi_start, inplace=False)
 	result = result.triangulate().clean()
 	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return result
+
+
+def add_elliptical_tube(pv, pars):
+	"""Build a G4EllipticalTube (dx, dy semi-axes; dz half-length) by extruding an ellipse."""
+	dx, dy, dz = pars[0], pars[1], pars[2]
+	n = 96
+	theta = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+	pts = np.column_stack([dx * np.cos(theta), dy * np.sin(theta), np.full(n, -dz)])
+	poly = pv.PolyData(pts, faces=np.array([n] + list(range(n)), dtype=np.int64))
+	result = poly.extrude((0.0, 0.0, 2.0 * dz), capping=True).triangulate().clean()
+	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return result
+
+
+def add_polyhedra(pv, phi_start, phi_total, nsides, zplane, iradius, oradius):
+	"""Build a G4Polyhedra (Pgon) by revolving a closed cross-section in nsides flat steps.
+
+	G4Polyhedra radii are tangent distances to the flat faces, so the profile radii are
+	scaled to the corner (circumscribed) radius before the segmented revolution.
+	"""
+	n = len(zplane)
+	corner_scale = 1.0 / np.cos(np.radians(0.5 * phi_total / nsides))
+
+	outer_pts = [[oradius[i] * corner_scale, 0.0, zplane[i]] for i in range(n)]
+	if any(r > 0.0 for r in iradius):
+		inner_pts = [[iradius[i] * corner_scale, 0.0, zplane[i]] for i in range(n - 1, -1, -1)]
+	else:
+		inner_pts = [[0.0, 0.0, zplane[i]] for i in range(n - 1, -1, -1)]
+
+	profile_pts = np.array(outer_pts + inner_pts, dtype=float)
+	npts = len(profile_pts)
+	poly = pv.PolyData()
+	poly.points = profile_pts
+	poly.faces = np.array([npts] + list(range(npts)), dtype=np.int64)
+
+	result = poly.extrude_rotate(angle=phi_total, resolution=nsides, capping=True)
+	if abs(phi_start) > 1e-6:
+		result = result.rotate_z(phi_start, inplace=False)
+	result = result.triangulate().clean()
+	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return result
+
+
+def _add_polyhedra_from_gvolume(pv, gvolume):
+	"""Parse G4Polyhedra (Pgon) parameters and call add_polyhedra.
+
+	The serialized order follows the GEMC2 Pgon convention used by the geometry ports:
+	phiStart, phiTotal, nsides*counts, nzplanes*counts, rInner..., rOuter..., zPlane...
+	"""
+	from .g4_units import convert_angle, convert_length
+	tokens = [t.strip() for t in gvolume.parameters.split(',') if t.strip()]
+	if len(tokens) < 4:
+		return None
+	phi_start = convert_angle(tokens[0], 'deg')
+	phi_total = convert_angle(tokens[1], 'deg')
+	nsides = int(tokens[2].split('*')[0])
+	nplanes = int(tokens[3].split('*')[0])
+	if nsides < 1 or len(tokens) < 4 + 3 * nplanes:
+		return None
+	rest = tokens[4:]
+
+	def to_mm(tok):
+		return convert_length(tok, 'mm')
+
+	iradius = [to_mm(rest[i])               for i in range(nplanes)]
+	oradius = [to_mm(rest[nplanes + i])     for i in range(nplanes)]
+	zplane  = [to_mm(rest[2 * nplanes + i]) for i in range(nplanes)]
+	return add_polyhedra(pv, phi_start, phi_total, nsides, zplane, iradius, oradius)
+
+
+def _boolean_component_transform(gvolume):
+	"""Return the active transform (F, T) of a boolean second operand.
+
+	GEMC2 `Operation:` semantics (clas12Tags detector.cc): the first solid is taken at
+	identity and the second solid is rotated by the inverse of its frame rotation, then
+	translated by its position.
+	"""
+	rotation_str = gvolume.get_rotation_string() if hasattr(gvolume, 'get_rotation_string') else ''
+	r_raw = parse_rotation_string(rotation_str)
+	placement_type = getattr(gvolume, 'g4placement_type', 'active')
+	f_local = r_raw.T if placement_type == 'passive' else r_raw
+	t_local = np.array(get_center(gvolume), dtype=float)
+	return f_local, t_local
+
+
+def _build_boolean_mesh(pv, gvolume, gconfiguration):
+	"""Build the mesh of a boolean-operation volume (`solidsOpr` = "a - b" / "a + b" / "a * b").
+
+	Operand meshes are built recursively in their own local frames from the published
+	volume registry; the second operand carries its relative transform. Results are
+	cached by operation string (identical operations across sectors share one mesh).
+	If the VTK boolean filter fails, the first operand is used as an approximation.
+	"""
+	if not hasattr(gconfiguration, '_pyvista_boolean_cache'):
+		gconfiguration._pyvista_boolean_cache = {}
+	cache = gconfiguration._pyvista_boolean_cache
+
+	opr = gvolume.solidsOpr
+	if opr in cache:
+		return cache[opr]
+
+	registry = getattr(gconfiguration, '_pyvista_gvolumes', {})
+	tokens = opr.split()
+	result = None
+	if len(tokens) == 3 and tokens[1] in ('+', '-', '*'):
+		gvol_a = registry.get(tokens[0])
+		gvol_b = registry.get(tokens[2])
+		mesh_a = _build_volume_mesh(gvol_a, gconfiguration)[0] if gvol_a is not None else None
+		mesh_b = _build_volume_mesh(gvol_b, gconfiguration)[0] if gvol_b is not None else None
+
+		if mesh_a is not None and mesh_b is not None:
+			f_b, t_b = _boolean_component_transform(gvol_b)
+			mesh_b = mesh_b.copy()
+			mesh_b.points = mesh_b.points @ f_b.T + t_b
+
+			try:
+				# clean first: cleaning after triangulation can collapse slivers back
+				# into non-triangle cells, which the VTK boolean filter rejects
+				a = mesh_a.clean().triangulate()
+				b = mesh_b.clean().triangulate()
+				if tokens[1] == '-':
+					result = a.boolean_difference(b)
+				elif tokens[1] == '+':
+					result = a.boolean_union(b)
+				else:
+					result = a.boolean_intersection(b)
+				if result is not None and result.n_points == 0:
+					result = None
+			except Exception:
+				result = None
+			if result is None:
+				print(f'Warning: boolean operation <{opr}> for {gvolume.name} failed; '
+				      f'displaying the first operand instead')
+				result = mesh_a
+			else:
+				result = result.clean()
+		elif mesh_a is not None:
+			result = mesh_a
+
+	cache[opr] = result
 	return result
 
 

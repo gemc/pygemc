@@ -164,6 +164,7 @@ class GConfiguration:
 		self.variation_runs: dict = {}
 		self.nvolumes = 0
 		self.nmaterials = 0
+		self.nmirrors = 0
 		self.geoFileName = None
 		self.matFileName = None
 		self.mirFileName = None
@@ -753,6 +754,8 @@ class GConfiguration:
 			print(f"	▪︎ Number of volumes: {self.nvolumes}")
 		if self.nmaterials > 0:
 			print(f"	▪︎ Number of materials: {self.nmaterials}")
+		if self.nmirrors > 0:
+			print(f"	▪︎ Number of mirrors: {self.nmirrors}")
 		if self.use_pyvista:
 			pyvista_variation = self.pyvista_variation or self._pyvista_first_variation
 			if pyvista_variation is None:

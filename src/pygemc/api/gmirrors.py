@@ -1,32 +1,42 @@
-#=======================================
-#	gemc mirrors definition
+# =======================================
+# gemc mirrors definition
 #
-#	This file defines a MyMirror class that holds values to define an optical boundary.  In gemc, any type of optical boundary
-#	is described as a "mirror", regardless of its use or reflective quality.
+# This file defines a GMirror class that holds the parameters needed to define an optical
+# boundary in gemc. Any type of optical boundary is described as a "mirror", regardless of
+# its use or reflective quality.
 #
-#	Each mirror definition is an instance of the class. All of the instance variables are strings.
+# A GMirror is instantiated with the mirror name. The following members are mandatory and
+# checked at publish time:
 #
-#	Class members (all members are text strings):
-#	name			- The name of the mirror definition
-#	description			-  A description of the mirror definition
-#	type				- The surface type (see below).  Example:  "dielectric_dielectric" or "dielectric_metal"
-#	finish			- The type of finish of the optical surface (see below for options). Example:  "polishedfrontpainted"
-#	model			- The optical model to use for the surface (see below for options)
-#	border			- "SkinSurface" if the optical boundary represents the entire outside surface of a volume
-#					- For a border surface defined as the contact area between two neighboring volumes, use the
-#					- name of the bordering volume.  Optical surfaces are ordered in GEANT4 and gemc.
-#	matOptProps		- use the name of a material with optical properties to use as the boundary properties
-#					- The material does not have to be the same as either bordering volume, i.e., a thin paint
-#					- if "notDefined" then use the properties defined in the following variables to define the boundary
-#	photonEnergy		- a list of photon energies at which to evaluate the following optical properties
-#	indexOfRefraction	- a list of boundary material refractive indices evaluated at the energies in photonEnergy
-#	reflectivity			- a list of boundary material reflectivities evaluated at the energies in photonEnergy
-#	efficiency			- a list of photoelectric absorption efficiencies evaluated at the energies in photonEnergy
-#					- efficiency is used in "dielectric_metal" boundaries where the photon is either reflected or
-#					- absorbed by the metal with this efficiency.  Can be used as the quantum efficiency in a PMT.
-#	specularlobe		- defines scattering properties of a rough optical surface
-#	specularspike		- defines scattering properties of a rough optical surface
-#	backscatter			- defines scattering properties of a rough optical surface
+# - type:   the surface type (see below). Example: "dielectric_dielectric" or "dielectric_metal"
+# - finish: the type of finish of the optical surface (see below). Example: "polishedfrontpainted"
+# - model:  the optical model to use for the surface (see below)
+# - border: "SkinSurface" if the optical boundary represents the entire outside surface of a
+#           volume. For a border surface defined as the contact area between two neighboring
+#           volumes, use the name of the bordering volume.
+#
+# The boundary optical properties come from either:
+#
+# - matOptProps: the name of a material with optical properties to use as the boundary
+#                properties. The material does not have to be the same as either bordering
+#                volume, i.e., a thin paint.
+#
+# or the explicit tables, each a string of values evaluated at photonEnergy:
+#
+# - photonEnergy:      a list of photon energies at which to evaluate the optical properties
+# - indexOfRefraction: boundary material refractive indices
+# - reflectivity:      boundary material reflectivities
+# - efficiency:        photoelectric absorption efficiencies. Used in "dielectric_metal"
+#                      boundaries where the photon is either reflected or absorbed by the
+#                      metal with this efficiency. Can be used as the quantum efficiency of
+#                      a PMT.
+# - specularlobe, specularspike, backscatter: scattering properties of a rough surface
+# - transmittance:     probability that the photon is transmitted through the surface
+#                      (e.g. a semi-transparent, half-silvered mirror)
+# - sigmaAlpha: roughness parameter of the surface (unified model)
+#
+# A volume is associated to a mirror through the GVolume `mirror` field, which names the
+# GMirror applied to that volume surface.
 
 # =================================================================
 # Available finish in materials/include/G4OpticalSurface.hh:
@@ -87,77 +97,102 @@
 
 # =================================================================
 
+import sys
+
+# mandatory fields, checked at publish time
+WILLBESETSTRING = 'WILLBESET'
+
+# for optional fields
+NOTASSIGNED = None
+
+from .gsqlite import populate_sqlite_mirrors
+
+
 # Mirror class definition
-class MyMirror():
-	
-	def __init__(self, name="none", description="none", \
-	type="notDefined", finish="notDefined", model="notDefined", border="notDefined", \
-	matOptProps="none", photonEnergy="notDefined", indexOfRefraction="none", reflectivity="none", \
-	efficiency="none", specularlobe="none", specularspike="none", backscatter="none"):
-		
-		self.name = name		# Mandatory
-		self.description = description
-		self.type = type			# Mandatory
-		self.finish = finish		# Mandatory
-		self.model = model		# Mandatory
-		self.border = border		# Mandatory
-		self.matOptProps = matOptProps
-		self.photonEnergy = photonEnergy
-		self.indexOfRefraction = indexOfRefraction
-		self.reflectivity = reflectivity
-		self.efficiency = efficiency
-		self.specularlobe = specularlobe
-		self.specularspike = specularspike
-		self.backscatter = backscatter
+class GMirror():
+	def __init__(self, name):
+		# mandatory fields. Checked at publish time
+		self.name   = name
+		self.type   = WILLBESETSTRING
+		self.finish = WILLBESETSTRING
+		self.model  = WILLBESETSTRING
+		self.border = WILLBESETSTRING
 
+		# optional fields
+		self.description = NOTASSIGNED
 
-# Function to initialize (overwrite) any existing mirror file so that any new mirrors can simply be appended in this project	
-def init_mirrors_file(configuration):
-	if configuration.factory == "ascii":
-		fileName = configuration.detector_name + "__mirrors_"+str(configuration.variation)+".txt"
-		open(fileName, "w+")
+		# boundary optical properties: either the name of a material with optical
+		# properties, or the explicit tables below
+		self.matOptProps       = NOTASSIGNED
+		self.photonEnergy      = NOTASSIGNED
+		self.indexOfRefraction = NOTASSIGNED
+		self.reflectivity      = NOTASSIGNED
+		self.efficiency        = NOTASSIGNED
+		self.specularlobe      = NOTASSIGNED
+		self.specularspike     = NOTASSIGNED
+		self.backscatter       = NOTASSIGNED
+		self.transmittance     = NOTASSIGNED
+		self.sigmaAlpha        = NOTASSIGNED
 
+	def check_validity(self):
+		if self.type == WILLBESETSTRING:
+			sys.exit(' Error: type not defined for GMirror ' + str(self.name))
+		if self.finish == WILLBESETSTRING:
+			sys.exit(' Error: finish not defined for GMirror ' + str(self.name))
+		if self.model == WILLBESETSTRING:
+			sys.exit(' Error: model not defined for GMirror ' + str(self.name))
+		if self.border == WILLBESETSTRING:
+			sys.exit(' Error: border not defined for GMirror ' + str(self.name))
+		# the boundary needs optical properties: a material name or the explicit tables
+		if self.matOptProps is NOTASSIGNED and self.photonEnergy is NOTASSIGNED:
+			sys.exit(' Error: no optical properties defined for GMirror ' + str(self.name)
+			         + ': set matOptProps or photonEnergy with the properties tables')
+		if self.matOptProps is NOTASSIGNED:
+			if (self.indexOfRefraction is NOTASSIGNED and self.reflectivity is NOTASSIGNED
+					and self.efficiency is NOTASSIGNED):
+				sys.exit(' Error: photonEnergy is defined for GMirror ' + str(self.name)
+				         + ' but no property (indexOfRefraction, reflectivity, efficiency) is')
 
-# Function to write out a material definition to the material file for use as input by gemc
-def print_mir(configuration, mirror):	
-	if mirror.matOptProps == "notDefined":
-		if mirror.photonEnergy == "none":
-			print(" !! Error: there is no material with optical properties associated with this mirror.\n")
-			print(" !! Optical properties must be defined.\n")
+	def entry_to_ascii(self, v):
+		# Normalize Python-side 'empty' values for ascii output
+		if v is None:
+			return 'NULL'
+		if isinstance(v, (list, tuple)):
+			return ' '.join(map(str, v))
+		return str(v).strip()
 
-	# TEXT Factory
-	if configuration.factory == "ascii":
-		fName = configuration.detector_name+"__mirrors_"+configuration.variation+".txt"
-		with open(fName, "a+") as fn:
-			if mirror.type == "notDefined":
-				print("Error: type undefined.\n")
-			if mirror.finish == "notDefined":
-				print("Error: finish undefined.\n")
-			if mirror.model == "notDefined":
-				print("Error: model undefined.\n")
-			if mirror.border == "notDefined":
-				print("Error: border undefined.\n")
+	def publish(self, configuration):
+		self.check_validity()
+		if hasattr(configuration, "record_current_variation_run"):
+			configuration.record_current_variation_run()
 
-			lstr = ""
-			
-			lstr += "%20s  |" % str(mirror.name)
-			lstr += "%30s  |" % str(mirror.description)
-			lstr += "%24s  |" % str(mirror.type)
-			lstr += "%20s  |" % str(mirror.finish)
-			lstr += "%10s  |" % str(mirror.model)
-			lstr += "%25s  |" % str(mirror.border)
-			lstr += "%25s  |" % str(mirror.matOptProps)
-			lstr += "%5s |" % str(mirror.photonEnergy)
-			lstr += "%5s |" % str(mirror.indexOfRefraction)
-			lstr += "%5s |" % str(mirror.reflectivity)
-			lstr += "%5s |" % str(mirror.efficiency)
-			lstr += "%5s |" % str(mirror.specularlobe)
-			lstr += "%5s |" % str(mirror.specularspike)
-			lstr += "%5s " % str(mirror.backscatter)
-			
-			lstr += "\n"
-			fn.write(lstr)
+		if configuration.factory == 'ascii':
+			fileName = configuration.mirFileName
+			configuration.nmirrors += 1
+			with open(fileName, 'a+') as dn:
+				ea = self.entry_to_ascii
+				line  = "%20s  |" % ea(self.name)
+				line += "%40s  |" % ea(self.description)
+				line += "%24s  |" % ea(self.type)
+				line += "%20s  |" % ea(self.finish)
+				line += "%10s  |" % ea(self.model)
+				line += "%25s  |" % ea(self.border)
+				line += "%25s  |" % ea(self.matOptProps)
+				line += "%60s  |" % ea(self.photonEnergy)
+				line += "%30s  |" % ea(self.indexOfRefraction)
+				line += "%30s  |" % ea(self.reflectivity)
+				line += "%30s  |" % ea(self.efficiency)
+				line += "%30s  |" % ea(self.specularlobe)
+				line += "%30s  |" % ea(self.specularspike)
+				line += "%30s  |" % ea(self.backscatter)
+				line += "%30s  |" % ea(self.transmittance)
+				line += "%10s  |\n" % ea(self.sigmaAlpha)
+				dn.write(line)
 
+		elif configuration.factory == 'sqlite':
+			configuration.nmirrors += 1
+			populate_sqlite_mirrors(self, configuration)
 
-	if int(configuration.verbosity) > 0:
-		print("  + Mirror %s uploaded successfully for variation %s \n" %(configuration.detector_name, configuration.variation))
+		if int(configuration.verbosity) > 0:
+			print(f"  + GMirror {self.name} uploaded successfully for variation "
+			      f"<{configuration.variation}>, run {configuration.runno}")

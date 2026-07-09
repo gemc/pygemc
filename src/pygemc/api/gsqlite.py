@@ -183,6 +183,10 @@ def create_sqlite_database(sqlitedb):
 	sql.execute('''CREATE TABLE materials
                  (id integer primary key)''')
 
+	# Create mirrors table with one column
+	sql.execute('''CREATE TABLE mirrors
+                 (id integer primary key)''')
+
 	# Save (commit) the changes
 	sqlitedb.commit()
 
@@ -230,9 +234,34 @@ def add_materials_fields_to_sqlite_if_needed(gmaterial, configuration):
 	configuration.sqlitedb.commit()
 
 
+def add_mirrors_fields_to_sqlite_if_needed(gmirror, configuration):
+	sql = configuration.sqlitedb.cursor()
+	# databases created before mirrors support may lack the table
+	sql.execute("CREATE TABLE IF NOT EXISTS mirrors (id integer primary key)")
+	sql.execute("SELECT name FROM PRAGMA_TABLE_INFO('mirrors');")
+	fields = sql.fetchall()
+	field_names = {field[0] for field in fields}
+
+	# if there is only one column, add the metadata columns
+	if len(fields) == 1:
+		add_column(configuration.sqlitedb, "mirrors", "experiment", "TEXT")
+		add_column(configuration.sqlitedb, "mirrors", "system", "TEXT")
+		add_column(configuration.sqlitedb, "mirrors", "variation", "TEXT")
+		add_column(configuration.sqlitedb, "mirrors", "run", "INTEGER")
+		field_names.update({"experiment", "system", "variation", "run"})
+
+	# add missing columns from gmirror class (upgrades tables created by older APIs)
+	for field in gmirror.__dict__:
+		if field not in field_names:
+			sql_type = sqltype_of_variable(gmirror.__dict__[field])
+			add_column(configuration.sqlitedb, "mirrors", field, sql_type)
+	configuration.sqlitedb.commit()
+
+
 # Store already deleted (system, variation, runno) combinations so we delete only once
 deleted_geometry = set()
 deleted_materials = set()
+deleted_mirrors = set()
 
 
 def columns_and_values(gobject, configuration):
@@ -316,6 +345,37 @@ def populate_sqlite_materials(gmaterial, configuration):
 	cols, vals = columns_and_values(gmaterial, configuration)
 	placeholders = ",".join(["?"] * len(cols))
 	sql.execute(f"INSERT INTO materials ({','.join(cols)}) VALUES ({placeholders})", vals)
+	configuration.sqlitedb.commit()
+
+
+def populate_sqlite_mirrors(gmirror, configuration):
+	global deleted_mirrors
+	add_mirrors_fields_to_sqlite_if_needed(gmirror, configuration)
+
+	sql = configuration.sqlitedb.cursor()
+	key = (configuration.experiment, configuration.system, configuration.variation,
+	       configuration.runno)
+
+	if key not in deleted_mirrors:
+		sql.execute(
+			"""DELETE FROM mirrors WHERE experiment=? AND system=? AND variation=? AND run=?""",
+			key)
+		configuration.sqlitedb.commit()
+		deleted_mirrors.add(key)
+
+	sql.execute(
+		"""SELECT COUNT(*) FROM mirrors
+		   WHERE name=? AND experiment=? AND system=? AND variation=? AND run=?""",
+		(gmirror.name, configuration.experiment, configuration.system, configuration.variation,
+		 configuration.runno)
+	)
+	if sql.fetchone()[0] != 0:
+		sys.exit(
+			f"{GColors.RED}Error: mirror >{gmirror.name}< already exists for variation '{configuration.variation}'{GColors.END}")
+
+	cols, vals = columns_and_values(gmirror, configuration)
+	placeholders = ",".join(["?"] * len(cols))
+	sql.execute(f"INSERT INTO mirrors ({','.join(cols)}) VALUES ({placeholders})", vals)
 	configuration.sqlitedb.commit()
 
 

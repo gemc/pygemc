@@ -168,10 +168,10 @@ class GVolume:
 			"gemc supports at most two (doubleRotation:).")
 
 	def check_validity(self):
-		# need to add checking if it's operation instead
-		if self.solid == None and self.copyOf == None:
+		# a volume needs a primitive solid unless it is a copy or a boolean operation
+		if self.solid == None and self.copyOf == None and self.solidsOpr == None:
 			sys.exit(' Error: solid not defined for GVolume ' + str(self.name))
-		if self.parameters == None and self.copyOf == None:
+		if self.parameters == None and self.copyOf == None and self.solidsOpr == None:
 			sys.exit(' Error: parameters not defined for GVolume ' + str(self.name))
 		if self.material == None:
 			sys.exit(' Error: material not defined for GVolume ' + str(self.name))

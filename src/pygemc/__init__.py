@@ -3,6 +3,7 @@
 from .api import (
     GVolume,
     GMaterial,
+    GMirror,
     GConfiguration,
     GColors,
     autogeometry,
@@ -20,6 +21,7 @@ _ANALYZER_NAMES = {"GemcOutput", "available_variables", "plot_variable", "read_o
 __all__ = [
     "GVolume",
     "GMaterial",
+    "GMirror",
     "GConfiguration",
     "GColors",
     "autogeometry",
