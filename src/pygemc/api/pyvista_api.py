@@ -302,6 +302,7 @@ def _build_volume_mesh(gvolume, gconfiguration):
 		'G4Trap': add_general_trap,
 		'G4Sphere': add_sphere,
 		'G4EllipticalTube': add_elliptical_tube,
+		'G4Paraboloid': add_paraboloid,
 	}
 	builder = builders.get(gvolume.solid)
 	if builder is None:
@@ -367,7 +368,7 @@ def _cad_scale(gvolume):
 		return 1.0
 
 
-def _world_transform(gvolume, gconfiguration, t_local):
+def _local_transform(gvolume):
 	# Build F_local: the forward matrix mapping local column vectors to parent column vectors.
 	# passive (G4PVPlacement(&R, T)): Geant4 stores frot=R directly, navigation applies
 	#   p_local = R @ (p_world - T), so p_world = R^T @ p_local + T → F_local = R^T = R_raw.T
@@ -377,23 +378,39 @@ def _world_transform(gvolume, gconfiguration, t_local):
 	r_raw = parse_rotation_string(rotation_str)
 	placement_type = getattr(gvolume, 'g4placement_type', 'active')
 	f_local = r_raw.T if placement_type == 'passive' else r_raw
+	t_local = np.array(get_center(gvolume), dtype=float)
+	return f_local, t_local
 
-	if not hasattr(gconfiguration, '_world_transforms'):
-		gconfiguration._world_transforms = {}
 
+def _register_local_transform(gvolume, gconfiguration):
+	"""Record every published volume's local transform and mother.
+
+	World transforms are resolved lazily at flush time (_resolve_world_transform), so
+	volumes may be published in any order relative to their mothers — matching the
+	dependency-resolving behavior of the GEMC geometry construction.
+	"""
+	if not hasattr(gconfiguration, '_pyvista_local_transforms'):
+		gconfiguration._pyvista_local_transforms = {}
+	f_local, t_local = _local_transform(gvolume)
 	mother = getattr(gvolume, 'mother', 'root')
-	if mother in (None, 'root', ''):
-		f_world, t_world = f_local, t_local
-	elif mother in gconfiguration._world_transforms:
-		f_parent, t_parent = gconfiguration._world_transforms[mother]
-		f_world = f_parent @ f_local
-		t_world = t_parent + f_parent @ t_local
-	else:
-		# Mother not yet rendered (unusual ordering) — use local transform only.
-		f_world, t_world = f_local, t_local
+	gconfiguration._pyvista_local_transforms[gvolume.name] = (f_local, t_local, mother)
+	return f_local, t_local
 
-	gconfiguration._world_transforms[gvolume.name] = (f_world, t_world)
-	return f_world, t_world
+
+def _resolve_world_transform(name, local_map, cache):
+	"""Return (F_world, T_world) for a volume name, accumulating mother transforms."""
+	if name in cache:
+		return cache[name]
+
+	f_local, t_local, mother = local_map[name]
+	if mother in (None, '', 'root') or mother not in local_map:
+		world = (f_local, t_local)
+	else:
+		f_parent, t_parent = _resolve_world_transform(mother, local_map, cache)
+		world = (f_parent @ f_local, t_parent + f_parent @ t_local)
+
+	cache[name] = world
+	return world
 
 
 def _prepare_volume_render_entry(gvolume, gconfiguration):
@@ -406,10 +423,10 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 		alpha = 0.05  # nearly invisible
 		mstyle = "wireframe"
 
-	# Register the world transform before attempting to mesh: volumes that cannot be
+	# Register the local transform before attempting to mesh: volumes that cannot be
 	# drawn (boolean operations, copies, unsupported solids) can still be mothers of
 	# drawable volumes, whose placement needs the full transform chain.
-	f_world, t_world = _world_transform(gvolume, gconfiguration, t_local)
+	_register_local_transform(gvolume, gconfiguration)
 
 	mesh, pars = _build_volume_mesh(gvolume, gconfiguration)
 
@@ -425,14 +442,12 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 	if gvolume.material == 'Component':
 		return None
 
-	# Apply world transform: mesh.points are row vectors → pts @ F_world.T + T_world
-	# applies F_world to each point as a column vector, then translates.
-	world_mesh = mesh.copy()
-	world_mesh.points = mesh.points @ f_world.T + t_world
-
+	# The mesh is stored in local coordinates; the world transform is applied at
+	# flush time, once all mothers have been published.
 	flat_solids = {'G4Box', 'G4Trd', 'G4Trap'}
 	return {
-		"mesh": world_mesh,
+		"name": gvolume.name,
+		"mesh": mesh,
 		"color": rgb,
 		"opacity": alpha,
 		"style": mstyle,
@@ -558,6 +573,22 @@ def flush_pyvista_rendering(gconfiguration):
 	if not entries:
 		gconfiguration._pyvista_render_entries_flushed = True
 		return
+
+	# Move each entry mesh from local to world coordinates. Transforms are resolved
+	# here — after all volumes are published — so publish order does not matter.
+	# mesh.points are row vectors: pts @ F_world.T + T_world applies F_world to each
+	# point as a column vector, then translates.
+	local_map = getattr(gconfiguration, '_pyvista_local_transforms', {})
+	world_cache = {}
+	for entry in entries:
+		if entry.get('_world_applied', False):
+			continue
+		if entry['name'] in local_map:
+			f_world, t_world = _resolve_world_transform(entry['name'], local_map, world_cache)
+			world_mesh = entry['mesh'].copy()
+			world_mesh.points = entry['mesh'].points @ f_world.T + t_world
+			entry['mesh'] = world_mesh
+		entry['_world_applied'] = True
 
 	fast_setting = getattr(gconfiguration, 'pyvista_fast', None)
 	threshold = getattr(gconfiguration, 'pyvista_fast_threshold', 1000)
@@ -952,6 +983,67 @@ def add_sphere(pv, pars):
 	return result
 
 
+def add_paraboloid(pv, pars):
+	"""Build a G4Paraboloid by revolving the Geant4 parabolic profile.
+
+	G4Paraboloid uses dz, r1, r2 where r1 is the radius at -dz and r2 is the radius
+	at +dz. The radius squared is linear in z between the two end planes.
+	"""
+	dz = float(pars[0])
+	r1 = float(pars[1])
+	r2 = float(pars[2])
+
+	n = 96
+	zs = np.linspace(-dz, dz, n)
+	t = (zs + dz) / (2.0 * dz)
+	rs = np.sqrt(np.maximum((1.0 - t) * r1 * r1 + t * r2 * r2, 0.0))
+
+	outer_pts = [[rs[i], 0.0, zs[i]] for i in range(n)]
+	axis_pts = [[0.0, 0.0, zs[i]] for i in range(n - 1, -1, -1)]
+	profile_pts = np.array(outer_pts + axis_pts, dtype=float)
+
+	npts = len(profile_pts)
+	poly = pv.PolyData()
+	poly.points = profile_pts
+	poly.faces = np.array([npts] + list(range(npts)), dtype=np.int64)
+
+	result = poly.extrude_rotate(angle=360.0, resolution=128, capping=True)
+	result = result.triangulate().clean()
+	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return result
+
+
+def add_paraboloid_shell(pv, outer_pars, inner_pars):
+	"""Build a shell bounded by two coaxial G4Paraboloid profiles."""
+	outer_dz, outer_r1, outer_r2 = [float(p) for p in outer_pars]
+	inner_dz, inner_r1, inner_r2 = [float(p) for p in inner_pars]
+
+	n = 96
+
+	def profile(dz, r1, r2):
+		zs = np.linspace(-dz, dz, n)
+		t = (zs + dz) / (2.0 * dz)
+		rs = np.sqrt(np.maximum((1.0 - t) * r1 * r1 + t * r2 * r2, 0.0))
+		return zs, rs
+
+	outer_z, outer_r = profile(outer_dz, outer_r1, outer_r2)
+	inner_z, inner_r = profile(inner_dz, inner_r1, inner_r2)
+
+	outer_pts = [[outer_r[i], 0.0, outer_z[i]] for i in range(n)]
+	inner_pts = [[inner_r[i], 0.0, inner_z[i]] for i in range(n - 1, -1, -1)]
+	profile_pts = np.array(outer_pts + inner_pts, dtype=float)
+
+	npts = len(profile_pts)
+	poly = pv.PolyData()
+	poly.points = profile_pts
+	poly.faces = np.array([npts] + list(range(npts)), dtype=np.int64)
+
+	result = poly.extrude_rotate(angle=360.0, resolution=128, capping=True)
+	result = result.triangulate().clean()
+	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return result
+
+
 def add_polycone(pv, phi_start, phi_total, zplane, iradius, oradius):
 	"""Build a G4Polycone solid by revolving a closed 2-D cross-section profile.
 
@@ -1066,13 +1158,130 @@ def _boolean_component_transform(gvolume):
 	return f_local, t_local
 
 
+# pymeshlab bundles its own Qt5 frameworks that crash when loaded next to PyQt6 (the
+# pyvistaqt background plotter), so its boolean filters run in a worker subprocess.
+_pymeshlab_worker_proc = None
+_pymeshlab_worker_disabled = False
+
+
+def _pymeshlab_worker():
+	"""Return the running pymeshlab worker process, starting it on first use."""
+	global _pymeshlab_worker_proc, _pymeshlab_worker_disabled
+	if _pymeshlab_worker_disabled:
+		return None
+	if _pymeshlab_worker_proc is not None and _pymeshlab_worker_proc.poll() is None:
+		return _pymeshlab_worker_proc
+
+	import atexit
+	import subprocess
+	import sys
+	from . import _pymeshlab_boolean_worker as worker_mod
+	try:
+		proc = subprocess.Popen(
+			[sys.executable, '-c',
+			 'from pygemc.api import _pymeshlab_boolean_worker as w; w.main()'],
+			stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+		ready = worker_mod.read_msg(proc.stdout)
+		if not isinstance(ready, dict) or ready.get('status') != 'ready':
+			proc.kill()
+			_pymeshlab_worker_disabled = True
+			return None
+	except Exception:
+		_pymeshlab_worker_disabled = True
+		return None
+
+	_pymeshlab_worker_proc = proc
+	atexit.register(proc.kill)
+	return proc
+
+
+def _boolean_with_pymeshlab(pv, mesh_a, mesh_b, op):
+	"""Boolean operation through pymeshlab's mesh-arrangement filters (subprocess).
+
+	These handle the cases that defeat the VTK boolean filter: fully-contained
+	operands (hollowing a shell), coplanar faces, and near-degenerate slivers.
+	Returns None when pymeshlab is unavailable or the operation fails.
+	"""
+	global _pymeshlab_worker_proc
+
+	proc = _pymeshlab_worker()
+	if proc is None:
+		return None
+
+	def to_arrays(mesh):
+		# clean merges duplicate seam vertices (extruded meshes) so the surface is
+		# manifold; triangulate last so every remaining cell is a triangle
+		tri = _mesh_without_data(mesh).clean().triangulate()
+		return np.asarray(tri.points, dtype=float), tri.faces.reshape(-1, 4)[:, 1:].astype(np.int64)
+
+	from . import _pymeshlab_boolean_worker as worker_mod
+	try:
+		va, fa = to_arrays(mesh_a)
+		vb, fb = to_arrays(mesh_b)
+		worker_mod.write_msg(proc.stdin, (op, va, fa, vb, fb))
+		response = worker_mod.read_msg(proc.stdout)
+	except Exception:
+		# worker died mid-operation: drop it so the next call restarts it
+		try:
+			proc.kill()
+		except Exception:
+			pass
+		_pymeshlab_worker_proc = None
+		return None
+
+	if response is None:
+		return None
+
+	verts, fm = response
+	fm = np.asarray(fm, dtype=np.int64)
+	faces = np.hstack([np.full((fm.shape[0], 1), 3, dtype=np.int64), fm]).ravel()
+	result = pv.PolyData(np.asarray(verts, dtype=float), faces)
+	result.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return result
+
+
+def _boolean_with_vtk(mesh_a, mesh_b, op):
+	"""Boolean operation through the VTK filter (fallback when pymeshlab fails)."""
+	try:
+		a = _mesh_without_data(mesh_a).triangulate()
+		b = _mesh_without_data(mesh_b).triangulate()
+		if op == '-':
+			result = a.boolean_difference(b)
+		elif op == '+':
+			result = a.boolean_union(b)
+		else:
+			result = a.boolean_intersection(b)
+		if result is not None and result.n_points == 0:
+			return None
+		return result.clean() if result is not None else None
+	except Exception:
+		return None
+
+
+def _mesh_without_data(mesh):
+	"""Return a copy with stale arrays removed before topology-changing filters."""
+	clean_mesh = mesh.copy(deep=True)
+	for arrays in (clean_mesh.point_data, clean_mesh.cell_data, clean_mesh.field_data):
+		for name in list(arrays.keys()):
+			del arrays[name]
+	return clean_mesh
+
+
+def _build_direct_boolean_mesh(pv, gvol_a, gvol_b, op):
+	"""Handle boolean pairs whose mesh can be built analytically."""
+	if op == '-' and gvol_a.solid == 'G4Paraboloid' and gvol_b.solid == 'G4Paraboloid':
+		return add_paraboloid_shell(pv, get_dimensions(gvol_a), get_dimensions(gvol_b))
+	return None
+
+
 def _build_boolean_mesh(pv, gvolume, gconfiguration):
 	"""Build the mesh of a boolean-operation volume (`solidsOpr` = "a - b" / "a + b" / "a * b").
 
 	Operand meshes are built recursively in their own local frames from the published
 	volume registry; the second operand carries its relative transform. Results are
 	cached by operation string (identical operations across sectors share one mesh).
-	If the VTK boolean filter fails, the first operand is used as an approximation.
+	pymeshlab performs the boolean when available, the VTK filter otherwise; if both
+	fail, the first operand is displayed as an approximation.
 	"""
 	if not hasattr(gconfiguration, '_pyvista_boolean_cache'):
 		gconfiguration._pyvista_boolean_cache = {}
@@ -1096,27 +1305,15 @@ def _build_boolean_mesh(pv, gvolume, gconfiguration):
 			mesh_b = mesh_b.copy()
 			mesh_b.points = mesh_b.points @ f_b.T + t_b
 
-			try:
-				# clean first: cleaning after triangulation can collapse slivers back
-				# into non-triangle cells, which the VTK boolean filter rejects
-				a = mesh_a.clean().triangulate()
-				b = mesh_b.clean().triangulate()
-				if tokens[1] == '-':
-					result = a.boolean_difference(b)
-				elif tokens[1] == '+':
-					result = a.boolean_union(b)
-				else:
-					result = a.boolean_intersection(b)
-				if result is not None and result.n_points == 0:
-					result = None
-			except Exception:
-				result = None
+			result = _build_direct_boolean_mesh(pv, gvol_a, gvol_b, tokens[1])
+			if result is None:
+				result = _boolean_with_pymeshlab(pv, mesh_a, mesh_b, tokens[1])
+			if result is None:
+				result = _boolean_with_vtk(mesh_a, mesh_b, tokens[1])
 			if result is None:
 				print(f'Warning: boolean operation <{opr}> for {gvolume.name} failed; '
 				      f'displaying the first operand instead')
 				result = mesh_a
-			else:
-				result = result.clean()
 		elif mesh_a is not None:
 			result = mesh_a
 

@@ -659,6 +659,25 @@ class GVolume:
 	# "G4Orb": "Full Solid Sphere",
 	# "G4Torus": "Torus",
 
+	def make_paraboloid(self, dz, r1, r2, lunit='mm'):
+		"""
+		make_paraboloid(dz, r1, r2, lunit='mm')
+
+		Creates a Geant4 paraboloid with half-length dz, radius r1 at -dz, and radius r2
+		at +dz.
+
+		Parameters
+		----------
+
+		dz: half length along z
+		r1: radius at -dz
+		r2: radius at +dz
+		lunit: length unit (optional; default: mm)
+
+		"""
+		self.solid = 'G4Paraboloid'
+		self.parameters = f'{dz}*{lunit}, {r1}*{lunit}, {r2}*{lunit}'
+
 	# in polycone the zplane and radius order are swapped w.r.t. gemc2 implementation
 	# in order to match the geant4 constructor
 	def make_polycone(self, phiStart, phiTotal, zplane, iradius, oradius, lunit1='mm',

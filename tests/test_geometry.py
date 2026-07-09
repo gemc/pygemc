@@ -60,6 +60,15 @@ def test_add_rotation_rejects_more_than_two_rotations():
         volume.get_rotation_string()
 
 
+def test_make_paraboloid_sets_geant4_constructor_parameters():
+    volume = GVolume("dish")
+
+    volume.make_paraboloid(40, 5, 80, lunit="cm")
+
+    assert volume.solid == "G4Paraboloid"
+    assert volume.parameters == "40*cm, 5*cm, 80*cm"
+
+
 def test_create_system(basic_system_dir):
     # basic_system_dir already ran 'gemc-system-template -s test'; just assert.
     test_dir = basic_system_dir / "test"

@@ -20,6 +20,7 @@ SOLIDS = {
     "G4Trd":     "30 10 40 15 60 cm",
     "G4TrapRAW": "10 20 30 40",
     "G4TrapG":   "60 20 5 40 30 40 10 16 10 14 10 cm deg",
+    "G4Paraboloid": "40 5 80 cm",
 }
 
 
