@@ -343,6 +343,18 @@ def log_gvolume(subroutine_name, silent, write_to, volume_type, parameters: [str
 				f'gvolume.make_general_trapezoid({parameters[0]}, {parameters[1]}, {parameters[2]}, {parameters[3]}, '
 				f'{parameters[4]}, {parameters[5]}, {parameters[6]}, {parameters[7]}, {parameters[8]}, '
 				f'{parameters[9]}, {parameters[10]}, \'{unit}\', \'{unit2}\' )')
+	elif volume_type == 'G4Paraboloid':
+		if parameters is None:
+			volume_definitions.append(
+				'gvolume.make_paraboloid(dz, r1, r2) # default units: mm.')
+		elif len(parameters) == 3:
+			volume_definitions.append(
+				f'gvolume.make_paraboloid({parameters[0]}, {parameters[1]}, {parameters[2]}) # default units: mm.')
+		elif len(parameters) == 4:
+			unit = check_units(parameters[3])
+			volume_definitions.append(
+				f'gvolume.make_paraboloid({parameters[0]}, {parameters[1]}, {parameters[2]}, \'{unit}\')')
+
 	# elif volume_type == 'G4Trap8':
 	else:
 		print(f'\n Fatal error: {volume_type} not supported yet')

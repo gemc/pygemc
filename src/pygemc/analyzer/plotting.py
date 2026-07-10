@@ -218,12 +218,15 @@ def select_frame_for_variables(
 			return candidate
 
 	if frame is None:
-		if selected_error is not None:
-			raise selected_error
-		return output.get_frame(data=data, detector=detector)
-
-	missing = ", ".join(f"'{variable}'" for variable in requested if not _has_variable(frame, variable))
-	available = _available_variable_text(output, detector)
+		available = _available_variable_text(output, detector)
+		if available == "<none>":
+			if selected_error is not None:
+				raise selected_error
+			return output.get_frame(data=data, detector=detector)
+		missing = ", ".join(f"'{variable}'" for variable in requested)
+	else:
+		missing = ", ".join(f"'{variable}'" for variable in requested if not _has_variable(frame, variable))
+		available = _available_variable_text(output, detector)
 	raise KeyError(f"Column(s) {missing} not found. Available variables: {available}")
 
 

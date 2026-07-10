@@ -428,7 +428,7 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 	# drawable volumes, whose placement needs the full transform chain.
 	_register_local_transform(gvolume, gconfiguration)
 
-	if getattr(gvolume, 'exist', 1) == 0 or gvolume.visible == 0:
+	if getattr(gvolume, 'exist', 1) == 0:
 		return None
 
 	mesh, pars = _build_volume_mesh(gvolume, gconfiguration)
