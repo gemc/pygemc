@@ -42,6 +42,7 @@ gemc-analyzer        = "pygemc.analyzer.cli:main"
 gemc-system-template = "pygemc.api.system_template:main"
 gemc-sqlite          = "pygemc.api.gsqlite:main"
 gemc-cure-mesh       = "pygemc.utilities.cure_mesh:main"
+gemc-remove-holes    = "pygemc.utilities.remove_holes:main"
 
 [project.urls]
 Homepage   = "https://gemc.github.io/home/"
