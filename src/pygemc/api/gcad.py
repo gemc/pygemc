@@ -60,6 +60,7 @@ _FIELD_MAP = {
 	'sensitivity': 'digitization',   # gxml alias
 	'identifier': 'identifier',
 	'identifiers': 'identifier',      # gxml alias
+	'mirror': 'mirror',              # optical-surface name (loaded by the CAD factory)
 	'description': 'description',
 	'exist': 'exist',
 	'exists': 'exist',                # convenience alias
@@ -308,22 +309,29 @@ def _build_gvolume(GVolume, entry, defaults, cad_dir, extension, file_dir):
 	name = str(merged.pop('name'))
 	gvolume = GVolume(name)
 
-	# Mark as a CAD import. The g4 CAD builder reads the mesh path from `description` and reuses
-	# the otherwise-unused `parameters` column to carry the optional uniform `scale` factor
-	# (default sentinel 'NULL' -> scale 1.0). 'NULL' also satisfies GVolume.check_validity.
-	gvolume.solid = 'CAD'
-	scale = merged.pop('scale', None)
-	gvolume.parameters = 'NULL' if scale is None else str(scale)
+	# A `copyOf` volume carries no mesh of its own: it reuses another CAD volume's solid, so it must
+	# NOT be solid="CAD" (else the CAD factory would look for a mesh named after it). The g4 CAD
+	# builder resolves the copy against the named source volume (same system).
+	copy_of = merged.pop('copyOf', None)
+	if copy_of is not None:
+		gvolume.copyOf = str(copy_of)
+	else:
+		# Mark as a CAD import. The g4 CAD builder reads the mesh path from `description` and reuses
+		# the otherwise-unused `parameters` column to carry the optional uniform `scale` factor
+		# (default sentinel 'NULL' -> scale 1.0). 'NULL' also satisfies GVolume.check_validity.
+		gvolume.solid = 'CAD'
+		scale = merged.pop('scale', None)
+		gvolume.parameters = 'NULL' if scale is None else str(scale)
 
-	filename = merged.pop('file', f"{name}.{extension}")
-	# Runtime path, resolved by GEMC relative to the system directory (e.g. "cad/htccCone.stl").
-	description = os.path.join(cad_dir, filename)
+		filename = merged.pop('file', f"{name}.{extension}")
+		# Runtime path, resolved by GEMC relative to the system directory (e.g. "stls/htccCone.stl").
+		description = os.path.join(cad_dir, filename)
 
-	# Warn (do not fail) when the mesh is not found next to the definition file: the database may
-	# be built on a different machine than the one that runs GEMC.
-	local_mesh = os.path.join(file_dir, filename)
-	if not os.path.exists(local_mesh):
-		print(f"  {GColors.YELLOW}Warning:{GColors.END} mesh not found next to definition file: {local_mesh}")
+		# Warn (do not fail) when the mesh is not found next to the definition file: the database may
+		# be built on a different machine than the one that runs GEMC.
+		local_mesh = os.path.join(file_dir, filename)
+		if not os.path.exists(local_mesh):
+			print(f"  {GColors.YELLOW}Warning:{GColors.END} mesh not found next to definition file: {local_mesh}")
 
 	rotation = merged.pop('rotation', None)
 	if rotation is not None:
@@ -335,8 +343,8 @@ def _build_gvolume(GVolume, entry, defaults, cad_dir, extension, file_dir):
 			sys.exit(f"{GColors.RED}Error: unknown CAD key '{key}' for volume '{name}'.{GColors.END}")
 		setattr(gvolume, attr, value)
 
-	# `description` doubles as the mesh path; an explicit `description` override wins.
-	if 'description' not in merged:
+	# `description` doubles as the mesh path (mesh-backed volumes only); an explicit override wins.
+	if copy_of is None and 'description' not in merged:
 		gvolume.description = description
 
 	if gvolume.material is None:
