@@ -21,6 +21,8 @@ volumes:
     position: 0*cm, 0*cm, 0.1*cm
     rotation: 0*deg, 180*deg, 0*deg
   - name:     htccCone
+    scale:    2.5
+    description: Main HTCC cone
     position: 0*cm, 0*cm, 0.0*cm
     material: G4_AIR
     sensitivity: flux
@@ -42,7 +44,7 @@ def _write_cad_dir(tmp_path):
 
 def _rows(db):
 	cur = db.execute(
-		"SELECT name, solid, material, color, position, rotations, description, digitization, "
+		"SELECT name, solid, parameters, material, color, position, rotations, description, digitization, "
 		"identifier FROM geometry ORDER BY name"
 	)
 	cols = [c[0] for c in cur.description]
@@ -92,9 +94,12 @@ def test_uploaded_fields_and_aliases(tmp_path):
 	assert ext["color"] == "888888"
 	assert ext["position"] == "0*cm, 0*cm, 0.1*cm"
 	assert ext["rotations"] == "0*deg, 180*deg, 0*deg"
-	assert ext["description"] == "cad/htccMollerConeExt.stl"
+	assert ext["parameters"] == "cad/htccMollerConeExt.stl, 1"
+	assert ext["description"] is None
 
 	cone = rows["htccCone"]
+	assert cone["parameters"] == "cad/htccCone.stl, 2.5"
+	assert cone["description"] == "Main HTCC cone"
 	assert cone["material"] == "G4_AIR"           # per-volume override wins over defaults
 	assert cone["digitization"] == "flux"          # `sensitivity` alias -> digitization
 	assert cone["identifier"] == "id: 3"           # `identifier` with a colon (quoted)
@@ -117,7 +122,8 @@ def test_json_input_is_accepted(tmp_path):
 	assert len(rows) == 1
 	assert rows[0]["name"] == "boxCad"
 	assert rows[0]["solid"] == "CAD"
-	assert rows[0]["description"] == "cad/boxCad.stl"
+	assert rows[0]["parameters"] == "cad/boxCad.stl, 1"
+	assert rows[0]["description"] is None
 
 
 def test_missing_system_key_exits(tmp_path):

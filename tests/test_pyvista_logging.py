@@ -91,10 +91,10 @@ def _box_volume():
 def _cad_volume(mesh_path):
     volume = GVolume("organ")
     volume.solid = "CAD"
-    volume.parameters = "2"
+    volume.parameters = f"{mesh_path}, 2"
     volume.material = "G4_WATER"
     volume.position = "1*mm, 2*mm, 3*mm"
-    volume.description = mesh_path
+    volume.description = "Organ mesh"
     volume.color = "ff0000"
     volume.gcolor = "ff0000"
     volume.opacity = 0.4
@@ -247,6 +247,22 @@ def test_pyvista_loads_cad_mesh_relative_to_sqlite_database(tmp_path):
     )
 
 
+def test_pyvista_loads_cad_mesh_from_system_subdirectory(tmp_path):
+    mesh_dir = tmp_path / "ltcc" / "stls"
+    mesh_dir.mkdir(parents=True)
+    mesh = mesh_dir / "organ.stl"
+    mesh.write_text("solid organ\nendsolid organ\n")
+    configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
+    configuration.dbhost = str(tmp_path / "gemc.db")
+    configuration.system = "ltcc"
+
+    pyvista_api.render_volume(_cad_volume("stls/organ.stl"), configuration)
+    pyvista_api.flush_pyvista_rendering(configuration)
+
+    assert configuration.pv.read_paths == [str(mesh)]
+    assert configuration.add_mesh_calls == 1
+
+
 def test_pyvista_cad_mesh_uses_modified_display_attributes(tmp_path):
     mesh = tmp_path / "organ.stl"
     mesh.write_text("solid organ\nendsolid organ\n")
@@ -261,3 +277,18 @@ def test_pyvista_cad_mesh_uses_modified_display_attributes(tmp_path):
     assert configuration.add_mesh_calls == 1
     assert configuration.add_mesh_kwargs[0]["color"] == "ff0000"
     assert configuration.add_mesh_kwargs[0]["opacity"] == 0.05
+
+
+def test_pyvista_accepts_legacy_cad_parameter_layout(tmp_path):
+    mesh = tmp_path / "organ.stl"
+    mesh.write_text("solid organ\nendsolid organ\n")
+    configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
+    volume = _cad_volume(str(mesh))
+    volume.parameters = "2"
+    volume.description = str(mesh)
+
+    pyvista_api.render_volume(volume, configuration)
+    pyvista_api.flush_pyvista_rendering(configuration)
+
+    assert configuration.pv.read_paths == [str(mesh)]
+    assert configuration.add_mesh_calls == 1

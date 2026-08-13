@@ -317,7 +317,8 @@ def _load_cad_mesh(pv, gvolume, gconfiguration):
 	path = _resolve_cad_mesh_path(gvolume, gconfiguration)
 	if path is None:
 		if int(getattr(gconfiguration, 'verbosity', 0) or 0) > 0:
-			print(f"Volume: {gvolume.name}, Solid: CAD, mesh not found: {gvolume.description}")
+			reference, _ = _cad_mesh_parameters(gvolume)
+			print(f"Volume: {gvolume.name}, Solid: CAD, mesh not found: {reference}")
 		return None
 
 	try:
@@ -335,22 +336,25 @@ def _load_cad_mesh(pv, gvolume, gconfiguration):
 
 
 def _resolve_cad_mesh_path(gvolume, gconfiguration):
-	description = getattr(gvolume, 'description', None)
-	if not description or str(description).upper() == 'NULL':
+	mesh_path, _ = _cad_mesh_parameters(gvolume)
+	if not mesh_path:
 		return None
 
-	description = str(description)
-	if os.path.isabs(description) and os.path.exists(description):
-		return description
+	if os.path.isabs(mesh_path) and os.path.exists(mesh_path):
+		return mesh_path
 
 	candidates = []
 	dbhost = getattr(gconfiguration, 'dbhost', None)
 	if not dbhost and hasattr(gconfiguration, 'args'):
 		dbhost = getattr(gconfiguration.args, 'dbhost', None)
 	if dbhost:
-		candidates.append(os.path.join(os.path.dirname(os.path.abspath(dbhost)), description))
+		database_dir = os.path.dirname(os.path.abspath(dbhost))
+		candidates.append(os.path.join(database_dir, mesh_path))
+		system = getattr(gconfiguration, 'system', None)
+		if system:
+			candidates.append(os.path.join(database_dir, system, mesh_path))
 
-	candidates.append(os.path.abspath(description))
+	candidates.append(os.path.abspath(mesh_path))
 
 	for candidate in candidates:
 		if os.path.exists(candidate):
@@ -359,13 +363,29 @@ def _resolve_cad_mesh_path(gvolume, gconfiguration):
 
 
 def _cad_scale(gvolume):
+	_, scale = _cad_mesh_parameters(gvolume)
+	return scale
+
+
+def _cad_mesh_parameters(gvolume):
+	"""Return ``(mesh path, scale)`` for current and legacy CAD geometry rows."""
 	raw = getattr(gvolume, 'parameters', None)
 	if raw is None or str(raw).strip().upper() in ('', 'NULL', 'NONE'):
-		return 1.0
+		return getattr(gvolume, 'description', None), 1.0
+
+	parts = [part.strip() for part in str(raw).split(',', 1)]
+	if len(parts) == 2:
+		try:
+			scale = float(parts[1])
+		except ValueError:
+			scale = 1.0
+		return parts[0], scale
+
+	# Legacy rows stored only the numeric scale in parameters and the path in description.
 	try:
-		return float(str(raw).strip())
+		return getattr(gvolume, 'description', None), float(parts[0])
 	except ValueError:
-		return 1.0
+		return parts[0], 1.0
 
 
 def _local_transform(gvolume):

@@ -7,8 +7,8 @@
 #   This is the modern replacement for the clas12Tags Perl mechanism (GXML.pm / cad.pm /
 #   gxml_to_sqlite.pl) that parsed a `cad_<variation>.gxml` file into a dedicated `cad` table.
 #   Here there is no dedicated table: each entry becomes a normal GVolume with solid="CAD" and
-#   the STL path carried in the `description` column (see GSystem::addVolumeFromFile in ../src and
-#   the CAD g4 builder, which reads the mesh path from `description`).
+#   `parameters: <mesh path>, <scale>`. The `description` column remains available for descriptive
+#   text.
 #
 #   Authoritative-list semantics: ONLY volumes with an entry in the file are written to the
 #   database. STL files that are present on disk but absent from the file are never uploaded and
@@ -27,6 +27,7 @@
 #     color:    "888888"
 #   volumes:                    # required. One entry per CAD piece; `name` matches the mesh stem.
 #     - name: htccMollerConeExt
+#       description: External Moller cone
 #       position: 0*cm, 0*cm, 0.1*cm
 #       rotation: 0*deg, 180*deg, 0*deg
 #       scale:    10            # optional uniform mesh scale (default 1). e.g. a mesh drawn in
@@ -260,7 +261,8 @@ def upload_cad_definitions(cad_file, dbhost, experiment=None, variation=None, ru
 		gvolume = _build_gvolume(GVolume, entry, defaults, cad_dir, extension, file_dir)
 		gvolume.publish(cfg)
 		if verbosity > 0:
-			print(f"    + {gvolume.name:<24} -> {gvolume.description}")
+			target = gvolume.parameters.split(',', 1)[0] if gvolume.solid == 'CAD' else gvolume.copyOf
+			print(f"    + {gvolume.name:<24} -> {target}")
 
 	cfg.sqlitedb.commit()
 	print(f"  {GColors.GREEN}Uploaded {cfg.nvolumes} CAD volume(s){GColors.END} into {dbhost}")
@@ -316,16 +318,19 @@ def _build_gvolume(GVolume, entry, defaults, cad_dir, extension, file_dir):
 	if copy_of is not None:
 		gvolume.copyOf = str(copy_of)
 	else:
-		# Mark as a CAD import. The g4 CAD builder reads the mesh path from `description` and reuses
-		# the otherwise-unused `parameters` column to carry the optional uniform `scale` factor
-		# (default sentinel 'NULL' -> scale 1.0). 'NULL' also satisfies GVolume.check_validity.
+		# Mark as a CAD import. The parameters column carries the runtime mesh path and uniform scale:
+		# "<path>, <scale>". This keeps description available for normal descriptive text.
 		gvolume.solid = 'CAD'
 		scale = merged.pop('scale', None)
-		gvolume.parameters = 'NULL' if scale is None else str(scale)
 
 		filename = merged.pop('file', f"{name}.{extension}")
 		# Runtime path, resolved by GEMC relative to the system directory (e.g. "stls/htccCone.stl").
-		description = os.path.join(cad_dir, filename)
+		mesh_path = os.path.join(cad_dir, filename)
+		if ',' in mesh_path:
+			sys.exit(
+				f"{GColors.RED}Error: CAD mesh paths cannot contain commas: '{mesh_path}'.{GColors.END}"
+			)
+		gvolume.parameters = f"{mesh_path}, {1 if scale is None else scale}"
 
 		# Warn (do not fail) when the mesh is not found next to the definition file: the database may
 		# be built on a different machine than the one that runs GEMC.
@@ -342,10 +347,6 @@ def _build_gvolume(GVolume, entry, defaults, cad_dir, extension, file_dir):
 		if attr is None:
 			sys.exit(f"{GColors.RED}Error: unknown CAD key '{key}' for volume '{name}'.{GColors.END}")
 		setattr(gvolume, attr, value)
-
-	# `description` doubles as the mesh path (mesh-backed volumes only); an explicit override wins.
-	if copy_of is None and 'description' not in merged:
-		gvolume.description = description
 
 	if gvolume.material is None:
 		gvolume.material = 'G4_AIR'
