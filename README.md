@@ -351,12 +351,14 @@ in the parent GEMC Meson build.
 | `src/pygemc/api/`      | Geometry, materials, units, SQLite output, PyVista support, and templates |
 | `src/pygemc/analyzer/` | CSV/ROOT readers, plotting, and analyzer CLI                              |
 | `tests/`               | Standalone pytest suite                                                   |
+| `.github/workflows/`   | CI, release, PyPI publication, and GEMC integration workflows            |
 | `releases/`            | Release notes                                                             |
 | `pyproject.toml`       | Python packaging metadata and console scripts                             |
 | `meson.build`          | Meson subproject integration used by GEMC                                 |
 
 ## Documentation
 
+- [CI workflow guide](.github/workflows/README.md)
 - [GEMC homepage](https://gemc.github.io/home/)
 - [Python API overview](https://gemc.github.io/home/documentation/api/pyvista_api.html)
 - [Quickstart](https://gemc.github.io/home/documentation/quickstart/)
