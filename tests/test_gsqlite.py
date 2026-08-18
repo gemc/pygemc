@@ -3,7 +3,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from pygemc.api.gsqlite import _build_where_clause, show_volumes_from_database
+from pygemc.api.gsqlite import (
+    _build_where_clause,
+    create_sqlite_database,
+    show_volumes_from_database,
+)
+from pygemc.api.gvolume import _OPTIONAL_GEOMETRY_FIELDS, GVolume
 
 
 def _args(**overrides):
@@ -79,3 +84,36 @@ def test_gsqlite_unknown_what_column_is_rejected():
 
     with pytest.raises(SystemExit):
         show_volumes_from_database(_geometry_database(), "name, missing_column", where_clause, params)
+
+
+def test_sqlite_geometry_serializes_optional_fields_as_sql_null():
+    database = sqlite3.connect(":memory:")
+    create_sqlite_database(database)
+    configuration = SimpleNamespace(
+        factory="sqlite",
+        sqlitedb=database,
+        experiment="optional-boundary-test",
+        system="test",
+        variation="default",
+        runno=1,
+        nvolumes=0,
+        use_pyvista=False,
+    )
+    volume = GVolume("optional_box")
+    volume.make_box(1, 2, 3)
+    volume.material = "G4_AIR"
+
+    for field, unset_alias in zip(
+        _OPTIONAL_GEOMETRY_FIELDS,
+        (" none ", "", "~", "no", " null ", "not provided"),
+    ):
+        setattr(volume, field, unset_alias)
+
+    volume.publish(configuration)
+
+    columns = ", ".join(_OPTIONAL_GEOMETRY_FIELDS)
+    stored_values = database.execute(
+        f"SELECT {columns} FROM geometry WHERE name = ?", (volume.name,)
+    ).fetchone()
+    assert stored_values == (None,) * len(_OPTIONAL_GEOMETRY_FIELDS)
+    database.close()

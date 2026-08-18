@@ -10,9 +10,12 @@
 # creation subprocess runs once per session, not once per test — matching the
 # meson behaviour where system creation has higher priority and runs first.
 
+from types import SimpleNamespace
+
 import pytest
 from conftest import SOLIDS, run_cli, run_python
-from pygemc.api.gvolume import GVolume
+
+from pygemc.api.gvolume import _ASCII_NULL, _OPTIONAL_GEOMETRY_FIELDS, GVolume
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +70,31 @@ def test_make_paraboloid_sets_geant4_constructor_parameters():
 
     assert volume.solid == "G4Paraboloid"
     assert volume.parameters == "40*cm, 5*cm, 80*cm"
+
+
+def test_ascii_geometry_serializes_optional_fields_as_null(tmp_path):
+    geometry_file = tmp_path / "geometry.txt"
+    configuration = SimpleNamespace(
+        factory="ascii",
+        geoFileName=geometry_file,
+        nvolumes=0,
+        use_pyvista=False,
+    )
+    volume = GVolume("optional_box")
+    volume.make_box(1, 2, 3)
+    volume.material = "G4_AIR"
+
+    for field, unset_alias in zip(
+        _OPTIONAL_GEOMETRY_FIELDS,
+        (" none ", "", "~", "no", " null ", "not provided"),
+    ):
+        setattr(volume, field, unset_alias)
+
+    volume.publish(configuration)
+
+    fields = [field.strip() for field in geometry_file.read_text().split("|")]
+    assert all(getattr(volume, field) is None for field in _OPTIONAL_GEOMETRY_FIELDS)
+    assert [fields[index] for index in (8, 13, 14, 15, 16, 17)] == [_ASCII_NULL] * 6
 
 
 def test_create_system(basic_system_dir):

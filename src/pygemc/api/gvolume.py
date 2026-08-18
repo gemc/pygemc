@@ -45,7 +45,8 @@
 #                     "active" uses G4Transform3D rotation/translation of the solid. This is the default.
 #                     "passive" uses the frame-rotation G4PVPlacement constructor used by GEMC2/clas12Tags.
 #
-# - mfild: The name of a magnetic field file attached to the gvolume. Default is "no".
+# - mfild: The name of a magnetic field file attached to the gvolume.
+#          Default is None.
 #          The field is defined in the file header. In case of a field map, the data is contained in the file itself.
 #
 #
@@ -62,7 +63,8 @@
 #          An optional 7th digit from 0-5 sets the transparency value where 0 is fully opaque and 5 is fully transparent
 #          Example:  "0000ff4" gives the volume a mostly transparent blue color
 #
-# - digitization:  A string defining the name of the plugin used to digitized the hit. Default is "none".
+# - digitization:  A string defining the name of the plugin used to digitized the hit.
+#                   Default is None.
 #                   Here pre-defined plugin can be selected:
 #                   - flux: each tracks leaves a hit in the volume
 #                   - particle_counter: each particle type leaves a hit in the volume
@@ -86,6 +88,17 @@ import math
 
 DEFAULTMOTHER = 'root'
 DEFAULTCOLOR = '778899'
+_ASCII_NULL = 'NULL'
+
+_OPTIONAL_GEOMETRY_FIELDS = (
+	'mfield',
+	'digitization',
+	'identifier',
+	'copyOf',
+	'solidsOpr',
+	'mirror',
+)
+_UNSET_GEOMETRY_VALUES = {'', 'null', '~', 'no', 'none', 'not provided'}
 
 from .gsqlite import populate_sqlite_geometry
 
@@ -193,15 +206,23 @@ class GVolume:
 		self.identifier = myidentifiers
 
 	def entry_to_ascii(self, v):
-		# Normalize Python-side “empty” values for ascii output
+		# None has one canonical representation at the ASCII serialization boundary.
 		if v is None:
-			return "NULL"
+			return _ASCII_NULL
 		if isinstance(v, list):
 			# rotations already flattened below; but keep this safe
 			return " ".join(map(str, v))
 		return str(v)
 
+	def _normalize_optional_fields(self):
+		"""Convert supported unset spellings to None before serialization."""
+		for field in _OPTIONAL_GEOMETRY_FIELDS:
+			value = getattr(self, field)
+			if isinstance(value, str) and value.strip().lower() in _UNSET_GEOMETRY_VALUES:
+				setattr(self, field, None)
+
 	def publish(self, configuration):
+		self._normalize_optional_fields()
 		self.check_validity()
 		if hasattr(configuration, "record_current_variation_run"):
 			configuration.record_current_variation_run()
