@@ -439,16 +439,19 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 	t_local = np.array(get_center(gvolume), dtype=float)
 	mstyle = "surface" if gvolume.style in (1, 2) else "wireframe"
 	mlinewidth = 1.0
-	if gvolume.visible == 0:
-		alpha = 0.05  # nearly invisible
-		mstyle = "wireframe"
 
 	# Register the local transform before attempting to mesh: volumes that cannot be
-	# drawn (boolean operations, copies, unsupported solids) can still be mothers of
-	# drawable volumes, whose placement needs the full transform chain.
+	# drawn (invisible volumes, boolean components, copies, unsupported solids) can
+	# still be mothers of drawable volumes, whose placement needs the full transform
+	# chain.
 	_register_local_transform(gvolume, gconfiguration)
 
-	if getattr(gvolume, 'exist', 1) == 0:
+	if getattr(gvolume, 'exist', 1) == 0 or gvolume.visible == 0:
+		return None
+
+	# "Component" volumes are boolean construction pieces, not placed volumes. They
+	# stay in the volume registry so _build_boolean_mesh can use them as operands.
+	if gvolume.material == 'Component':
 		return None
 
 	mesh, pars = _build_volume_mesh(gvolume, gconfiguration)
@@ -459,10 +462,6 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 			f'Pars: {pars}, Color: {rgb}, Alpha: {alpha}')
 
 	if mesh is None:
-		return None
-
-	# "Component" volumes are boolean construction pieces, not placed volumes
-	if gvolume.material == 'Component':
 		return None
 
 	# The mesh is stored in local coordinates; the world transform is applied at
@@ -1290,8 +1289,110 @@ def _mesh_without_data(mesh):
 	return clean_mesh
 
 
-def _build_direct_boolean_mesh(pv, gvol_a, gvol_b, op):
+def _add_elliptical_tube_shell_segment(pv, outer_pars, inner_pars,
+									   phi_start=0.0, phi_total=360.0):
+	"""Build a closed elliptical-tube shell over a polar-angle interval."""
+	outer_dx, outer_dy, outer_dz = map(float, outer_pars[:3])
+	inner_dx, inner_dy, inner_dz = map(float, inner_pars[:3])
+	if min(inner_dx, inner_dy, outer_dz, phi_total) <= 0.0:
+		return None
+	if inner_dx >= outer_dx or inner_dy >= outer_dy or inner_dz < outer_dz:
+		return None
+
+	closed = phi_total >= 360.0 - 1.0e-9
+	segments = 96 if closed else max(12, int(np.ceil(96.0 * phi_total / 360.0)))
+	point_count = segments if closed else segments + 1
+	theta = np.radians(np.linspace(phi_start, phi_start + phi_total, point_count, endpoint=not closed))
+	n = len(theta)
+
+	def ellipse_points(dx, dy, z):
+		cos_theta = np.cos(theta)
+		sin_theta = np.sin(theta)
+		radius = dx * dy / np.sqrt((dy * cos_theta) ** 2 + (dx * sin_theta) ** 2)
+		return np.column_stack((radius * cos_theta, radius * sin_theta, np.full(n, z)))
+
+	points = np.vstack((
+		ellipse_points(outer_dx, outer_dy, -outer_dz),
+		ellipse_points(inner_dx, inner_dy, -outer_dz),
+		ellipse_points(outer_dx, outer_dy, outer_dz),
+		ellipse_points(inner_dx, inner_dy, outer_dz),
+	))
+	bottom_outer, bottom_inner, top_outer, top_inner = 0, n, 2 * n, 3 * n
+	faces = []
+	face_segments = n if closed else n - 1
+	for i in range(face_segments):
+		j = (i + 1) % n
+		faces.extend((
+			[bottom_outer + i, bottom_outer + j, top_outer + j, top_outer + i],
+			[bottom_inner + i, top_inner + i, top_inner + j, bottom_inner + j],
+			[bottom_outer + i, bottom_inner + i, bottom_inner + j, bottom_outer + j],
+			[top_outer + i, top_outer + j, top_inner + j, top_inner + i],
+		))
+
+	if not closed:
+		last = n - 1
+		faces.extend((
+			[bottom_outer, top_outer, top_inner, bottom_inner],
+			[bottom_outer + last, bottom_inner + last, top_inner + last, top_outer + last],
+		))
+
+	encoded_faces = []
+	for face in faces:
+		encoded_faces.extend([len(face), *face])
+	mesh = pv.PolyData(points, np.asarray(encoded_faces, dtype=np.int64))
+	mesh.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return mesh
+
+
+def _add_elliptical_shell_minus_tube_sector(pv, shell_volume, tube_volume, registry):
+	"""Build an elliptical shell after subtracting a full-depth circular sector."""
+	tokens = str(getattr(shell_volume, 'solidsOpr', '') or '').split()
+	if len(tokens) != 3 or tokens[1] != '-':
+		return None
+	outer = registry.get(tokens[0])
+	inner = registry.get(tokens[2])
+	if outer is None or inner is None:
+		return None
+	if outer.solid != 'G4EllipticalTube' or inner.solid != 'G4EllipticalTube':
+		return None
+
+	outer_pars = get_dimensions(outer)
+	inner_pars = get_dimensions(inner)
+	tube_pars = get_dimensions(tube_volume)
+	if len(outer_pars) < 3 or len(inner_pars) < 3 or len(tube_pars) < 5:
+		return None
+	rmin, rmax, tube_dz, phi_start, phi_total = map(float, tube_pars[:5])
+	if rmin > 1.0e-9 or rmax < max(outer_pars[:2]) or tube_dz < outer_pars[2]:
+		return None
+	if phi_total <= 0.0 or phi_total >= 360.0:
+		return None
+
+	f_tube, t_tube = _boolean_component_transform(tube_volume)
+	if not np.allclose(t_tube, 0.0, atol=1.0e-9):
+		return None
+	z_rotation = np.array([
+		[f_tube[0, 0], f_tube[0, 1], 0.0],
+		[f_tube[1, 0], f_tube[1, 1], 0.0],
+		[0.0, 0.0, 1.0],
+	])
+	if not np.allclose(f_tube, z_rotation, atol=1.0e-9):
+		return None
+	rotation = np.degrees(np.arctan2(f_tube[1, 0], f_tube[0, 0]))
+	return _add_elliptical_tube_shell_segment(
+		pv,
+		outer_pars,
+		inner_pars,
+		phi_start=phi_start + rotation + phi_total,
+		phi_total=360.0 - phi_total,
+	)
+
+
+def _build_direct_boolean_mesh(pv, gvol_a, gvol_b, op, registry=None):
 	"""Handle boolean pairs whose mesh can be built analytically."""
+	if op == '-' and gvol_a.solid == 'G4EllipticalTube' and gvol_b.solid == 'G4EllipticalTube':
+		return _add_elliptical_tube_shell_segment(pv, get_dimensions(gvol_a), get_dimensions(gvol_b))
+	if op == '-' and gvol_a.solidsOpr is not None and gvol_b.solid == 'G4Tubs' and registry is not None:
+		return _add_elliptical_shell_minus_tube_sector(pv, gvol_a, gvol_b, registry)
 	if op == '-' and gvol_a.solid == 'G4Paraboloid' and gvol_b.solid == 'G4Paraboloid':
 		return add_paraboloid_shell(pv, get_dimensions(gvol_a), get_dimensions(gvol_b))
 	if op == '-' and gvol_a.solid == 'G4Box' and gvol_b.solid == 'G4Tubs':
@@ -1496,39 +1597,41 @@ def _build_boolean_mesh(pv, gvolume, gconfiguration):
 	if len(tokens) == 3 and tokens[1] in ('+', '-', '*'):
 		gvol_a = registry.get(tokens[0])
 		gvol_b = registry.get(tokens[2])
-		mesh_a = _build_volume_mesh(gvol_a, gconfiguration)[0] if gvol_a is not None else None
-		mesh_b = _build_volume_mesh(gvol_b, gconfiguration)[0] if gvol_b is not None else None
+		if gvol_a is not None and gvol_b is not None:
+			result = _build_direct_boolean_mesh(pv, gvol_a, gvol_b, tokens[1], registry)
 
-		if mesh_a is not None and mesh_b is not None:
+		if result is None and gvol_a is not None and gvol_b is not None:
+			mesh_a = _build_volume_mesh(gvol_a, gconfiguration)[0]
+			mesh_b = _build_volume_mesh(gvol_b, gconfiguration)[0]
+		else:
+			mesh_a = None
+			mesh_b = None
+
+		if result is None and mesh_a is not None and mesh_b is not None:
 			f_b, t_b = _boolean_component_transform(gvol_b)
 			mesh_b = mesh_b.copy()
 			mesh_b.points = mesh_b.points @ f_b.T + t_b
 
-			result = _build_direct_boolean_mesh(pv, gvol_a, gvol_b, tokens[1])
-			if result is None:
-				result = _boolean_with_pymeshlab(pv, mesh_a, mesh_b, tokens[1])
+			result = _boolean_with_pymeshlab(pv, mesh_a, mesh_b, tokens[1])
 			if result is None:
 				result = _boolean_with_vtk(mesh_a, mesh_b, tokens[1])
-			if result is None:
-				print(f'Warning: boolean operation <{opr}> for {gvolume.name} failed; '
-				      f'displaying the first operand instead')
-				result = mesh_a
-		elif mesh_a is not None:
-			result = mesh_a
+
+	if result is None:
+		print(f'Warning: boolean operation <{opr}> for {gvolume.name} failed; skipping volume')
 
 	cache[opr] = result
 	return result
 
 
 def _add_polycone_from_gvolume(pv, gvolume):
-	"""Parse G4Polycone parameters (which include a unit-less nplanes token) and call add_polycone."""
+	"""Parse G4Polycone parameters (nplanes may carry the GEMC `*counts` unit) and call add_polycone."""
 	from .g4_units import convert_angle, convert_length
 	tokens = [t.strip() for t in gvolume.parameters.split(',') if t.strip()]
 	if len(tokens) < 3:
 		return None
 	phi_start = convert_angle(tokens[0], 'deg')
 	phi_total = convert_angle(tokens[1], 'deg')
-	nplanes = int(tokens[2])
+	nplanes = int(tokens[2].split('*')[0])
 	if len(tokens) < 3 + 3 * nplanes:
 		return None
 	rest = tokens[3:]

@@ -72,6 +72,62 @@ def test_make_paraboloid_sets_geant4_constructor_parameters():
     assert volume.parameters == "40*cm, 5*cm, 80*cm"
 
 
+def test_make_tube_uses_full_azimuth_defaults():
+    volume = GVolume("tube")
+
+    volume.make_tube(5, 10, 20)
+
+    assert volume.solid == "G4Tubs"
+    assert volume.parameters == "5*mm, 10*mm, 20*mm, 0*deg, 360*deg"
+
+
+def test_geometry_builders_use_the_configured_value_formatter():
+    volume = GVolume("tube", value_formatter=lambda value: f"{float(value):.3g}")
+
+    volume.make_tube(0.1 + 0.2, 10, 20)
+    volume.set_position(0.1 + 0.2, 0, 0)
+
+    assert volume.parameters == "0.3*mm, 10*mm, 20*mm, 0*deg, 360*deg"
+    assert volume.position == "0.3*mm, 0*mm, 0*mm"
+
+
+def test_make_polycone_uses_defaults_and_count_units():
+    volume = GVolume("polycone")
+
+    volume.make_polycone(zplane=(-1, 1), iradius=(2, 2), oradius=(3, 4))
+
+    assert volume.solid == "G4Polycone"
+    assert volume.parameters == (
+        "0*deg, 360*deg, 2*counts, -1*mm, 1*mm, 2*mm, 2*mm, 3*mm, 4*mm"
+    )
+
+
+def test_make_polycone_rejects_mismatched_arrays():
+    volume = GVolume("polycone")
+
+    with pytest.raises(ValueError, match="array lengths do not match"):
+        volume.make_polycone(zplane=(-1, 1), iradius=(2,), oradius=(3, 4))
+
+
+def test_publish_passive_sets_placement_before_publishing(tmp_path):
+    geometry_file = tmp_path / "geometry.txt"
+    configuration = SimpleNamespace(
+        factory="ascii",
+        geoFileName=geometry_file,
+        nvolumes=0,
+        use_pyvista=False,
+    )
+    volume = GVolume("passive_box")
+    volume.make_box(1, 2, 3)
+    volume.material = "G4_AIR"
+
+    volume.publish_passive(configuration)
+
+    fields = [field.strip() for field in geometry_file.read_text().split("|")]
+    assert volume.g4placement_type == "passive"
+    assert fields[7] == "passive"
+
+
 def test_ascii_geometry_serializes_optional_fields_as_null(tmp_path):
     geometry_file = tmp_path / "geometry.txt"
     configuration = SimpleNamespace(

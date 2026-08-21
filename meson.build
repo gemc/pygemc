@@ -1,4 +1,4 @@
-project('pygemc', version: '0.1.0')
+project('pygemc', version: '0.4.0')
 
 # Use whatever python3 is on PATH to bootstrap the venv.
 # The venv (and everything in it) is what the parent project uses for all tests.

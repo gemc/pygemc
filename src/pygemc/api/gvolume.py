@@ -45,6 +45,9 @@
 #                     "active" uses G4Transform3D rotation/translation of the solid. This is the default.
 #                     "passive" uses the frame-rotation G4PVPlacement constructor used by GEMC2/clas12Tags.
 #
+# - value_formatter: Callable used to serialize numeric geometry values. Defaults to `str` and can be supplied
+#                    as a keyword-only constructor argument for sources that require a specific precision.
+#
 # - mfild: The name of a magnetic field file attached to the gvolume.
 #          Default is None.
 #          The field is defined in the file header. In case of a field map, the data is contained in the file itself.
@@ -107,9 +110,10 @@ from .gcolors import pyvista_color_to_hex
 
 # GVolume class definition
 class GVolume:
-	def __init__(self, name):
+	def __init__(self, name, *, value_formatter=str):
 		# mandatory fields. Checked at publish time
 		self.name = name
+		self._value_formatter = value_formatter
 		self.solid = None
 		self.parameters = None
 		self.material = None
@@ -140,7 +144,7 @@ class GVolume:
 
 	def set_rotation(self, x, y, z, lunit='deg', order=''):
 		with_units = [
-			f"{val}*{lunit}"
+			f"{self._format_value(val)}*{lunit}"
 			for val in [x, y, z]
 		]
 		string_with_units = ", ".join(with_units)
@@ -150,15 +154,15 @@ class GVolume:
 			self.rotations = [string_with_units]
 
 	def set_position(self, x, y, z, lunit='mm'):
-		myposition = str(x) + '*' + lunit + ', '
-		myposition += str(y) + '*' + lunit + ', '
-		myposition += str(z) + '*' + lunit
+		myposition = self._format_value(x) + '*' + lunit + ', '
+		myposition += self._format_value(y) + '*' + lunit + ', '
+		myposition += self._format_value(z) + '*' + lunit
 		self.position = myposition
 
 	def add_rotation(self, x, y, z, lunit='deg'):
-		myrotation = str(x) + '*' + lunit + ', '
-		myrotation += str(y) + '*' + lunit + ', '
-		myrotation += str(z) + '*' + lunit
+		myrotation = self._format_value(x) + '*' + lunit + ', '
+		myrotation += self._format_value(y) + '*' + lunit + ', '
+		myrotation += self._format_value(z) + '*' + lunit
 		self.rotations.append(myrotation)
 
 	def get_rotation_string(self):
@@ -270,6 +274,15 @@ class GVolume:
 			from .pyvista_api import render_volume
 			render_volume(self, configuration)
 
+	def publish_passive(self, configuration):
+		"""Publish using the frame-rotation placement convention used by GEMC2."""
+		self.g4placement_type = 'passive'
+		return self.publish(configuration)
+
+	def _format_value(self, value):
+		"""Format one geometry value using the policy selected at construction."""
+		return self._value_formatter(value)
+
 	# Functions to build geant4 solids
 	def make_box(self, dx, dy, dz, lunit='mm'):
 		"""
@@ -302,15 +315,15 @@ class GVolume:
 		"""
 
 		self.solid = 'G4Box'
-		my_lengths: str = str(dx) + '*' + lunit + ', '
-		my_lengths += str(dy) + '*' + lunit + ', '
-		my_lengths += str(dz) + '*' + lunit
+		my_lengths: str = self._format_value(dx) + '*' + lunit + ', '
+		my_lengths += self._format_value(dy) + '*' + lunit + ', '
+		my_lengths += self._format_value(dz) + '*' + lunit
 		self.parameters = my_lengths
 
 	# Cylindrical Section or Tube
-	def make_tube(self, rin, rout, length, phistart, phitotal, lunit1='mm', lunit2='deg'):
+	def make_tube(self, rin, rout, length, phistart=0, phitotal=360, lunit1='mm', lunit2='deg'):
 		"""
-		make_tube(rin, rout, length, phistart, phitotal, lunit1='mm', lunit2='deg')
+		make_tube(rin, rout, length, phistart=0, phitotal=360, lunit1='mm', lunit2='deg')
 
 		Creates a geant4 Cylindrical Section or Tube
 
@@ -320,8 +333,8 @@ class GVolume:
 		rin : inner radius
 		rout : outer radius
 		length : tube half length in z
-		phistart : starting phi angle
-		phitotal : total phi angle
+		phistart : starting phi angle (optional; default: 0)
+		phitotal : total phi angle (optional; default: 360)
 		lunit1: length unit (optional; default: mm)
 		lunit2: angle unit (optional; default: deg)
 
@@ -343,11 +356,11 @@ class GVolume:
 		"""
 
 		self.solid = 'G4Tubs'
-		my_dims: str = str(rin) + '*' + lunit1 + ', '
-		my_dims += str(rout) + '*' + lunit1 + ', '
-		my_dims += str(length) + '*' + lunit1 + ', '
-		my_dims += str(phistart) + '*' + lunit2 + ', '
-		my_dims += str(phitotal) + '*' + lunit2
+		my_dims: str = self._format_value(rin) + '*' + lunit1 + ', '
+		my_dims += self._format_value(rout) + '*' + lunit1 + ', '
+		my_dims += self._format_value(length) + '*' + lunit1 + ', '
+		my_dims += self._format_value(phistart) + '*' + lunit2 + ', '
+		my_dims += self._format_value(phitotal) + '*' + lunit2
 		self.parameters = my_dims
 
 	# Cylindrical Cut Section or Cut Tube
@@ -701,21 +714,22 @@ class GVolume:
 
 	# in polycone the zplane and radius order are swapped w.r.t. gemc2 implementation
 	# in order to match the geant4 constructor
-	def make_polycone(self, phiStart, phiTotal, zplane, iradius, oradius, lunit1='mm',
-	                  lunit2='deg'):
+	def make_polycone(self, phiStart=0, phiTotal=360, zplane=None, iradius=None, oradius=None,
+	                  lunit1='mm', lunit2='deg'):
 		"""
-		make_polycone(phiStart, phiTotal, zplane, iradius, oradius, lunit1='mm', lunit2='deg')
+		make_polycone(phiStart=0, phiTotal=360, zplane=None, iradius=None, oradius=None,
+		              lunit1='mm', lunit2='deg')
 
 		Creates a geant4 Polycone
 
 		Parameters
 		----------
 
-		phiStart: starting phi angle
-		phiTotal: total phi angle
-		zplane: list of z coordinates
-		iradius: list of inner radii
-		oradius: list of outer radii
+		phiStart: starting phi angle (optional; default: 0)
+		phiTotal: total phi angle (optional; default: 360)
+		zplane: required list of z coordinates
+		iradius: required list of inner radii
+		oradius: required list of outer radii
 		lunit1: length unit (optional; default: mm)
 		lunit2: angle unit (optional; default: deg)
 
@@ -726,25 +740,25 @@ class GVolume:
 
 		"""
 
+		if zplane is None or iradius is None or oradius is None:
+			raise ValueError('G4Polycone requires zplane, iradius, and oradius arrays')
+
 		nplanes = len(zplane)
 		if len(iradius) != nplanes or len(oradius) != nplanes:
-			sys.exit(
-				' Error: the G4Polycone array lengths do not match: zplane=' + str(
-					len(zplane)) + ', iradius=' + str(
-					len(iradius)) + ', oradius=' + str(len(oradius)))
+			raise ValueError(
+				'G4Polycone array lengths do not match: '
+				f'zplane={len(zplane)}, iradius={len(iradius)}, oradius={len(oradius)}')
 
 		self.solid = 'G4Polycone'
-		mylengths = ' '
-		for ele in zplane:
-			mylengths += str(ele) + '*' + lunit1 + ', '
-		for ele in iradius:
-			mylengths += str(ele) + '*' + lunit1 + ', '
-		for ele in oradius[:-1]:
-			mylengths += str(ele) + '*' + lunit1 + ', '
-
-		# last element w/o the extra comment
-		mylengths += str(oradius[-1]) + '*' + lunit1
-		self.parameters = f'{phiStart}*{lunit2}, {phiTotal}*{lunit2}, {nplanes}, {mylengths}'
+		parameters = [
+			f'{self._format_value(phiStart)}*{lunit2}',
+			f'{self._format_value(phiTotal)}*{lunit2}',
+			f'{nplanes}*counts',
+		]
+		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in zplane)
+		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in iradius)
+		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in oradius)
+		self.parameters = ', '.join(parameters)
 
 
 	def distribute_on_circle(self, n, radius, phistart=0, phispan=360,

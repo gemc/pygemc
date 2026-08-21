@@ -208,7 +208,7 @@ def add_geometry_fields_to_sqlite_if_needed(gvolume, configuration):
 
 	# add missing columns from gvolume class
 	for field in gvolume.__dict__:
-		if field != "gcolor" and field not in field_names:
+		if not field.startswith('_') and field != "gcolor" and field not in field_names:
 			sql_type = sqltype_of_variable(gvolume.__dict__[field])
 			add_column(configuration.sqlitedb, "geometry", field, sql_type)
 	configuration.sqlitedb.commit()
@@ -271,7 +271,7 @@ def columns_and_values(gobject, configuration):
 
 	for field, value in gobject.__dict__.items():
 		# keep same skips you already use elsewhere
-		if field in ('compType', 'totComposition', 'gcolor'):
+		if field.startswith('_') or field in ('compType', 'totComposition', 'gcolor'):
 			continue
 		cols.append(field)
 		vals.append(value if not isinstance(value, list) else str(value))  # just in case

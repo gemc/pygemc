@@ -116,4 +116,8 @@ def test_sqlite_geometry_serializes_optional_fields_as_sql_null():
         f"SELECT {columns} FROM geometry WHERE name = ?", (volume.name,)
     ).fetchone()
     assert stored_values == (None,) * len(_OPTIONAL_GEOMETRY_FIELDS)
+    geometry_columns = {
+        row[1] for row in database.execute("PRAGMA table_info(geometry)").fetchall()
+    }
+    assert "_value_formatter" not in geometry_columns
     database.close()

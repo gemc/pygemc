@@ -18,6 +18,9 @@ class FakeMesh:
     def extract_feature_edges(self, **kwargs):
         return self
 
+    def compute_normals(self, **kwargs):
+        return self
+
 
 class FakeMultiBlock:
     def __init__(self, meshes):
@@ -30,9 +33,14 @@ class FakeMultiBlock:
 class FakePv:
     def __init__(self):
         self.read_paths = []
+        self.cube_calls = 0
 
     def Cube(self, **kwargs):
+        self.cube_calls += 1
         return FakeMesh()
+
+    def PolyData(self, points=None, faces=None):
+        return FakeMesh(points=points)
 
     def read(self, path):
         self.read_paths.append(path)
@@ -263,7 +271,7 @@ def test_pyvista_loads_cad_mesh_from_system_subdirectory(tmp_path):
     assert configuration.add_mesh_calls == 1
 
 
-def test_pyvista_cad_mesh_uses_modified_display_attributes(tmp_path):
+def test_pyvista_does_not_render_invisible_volume(tmp_path):
     mesh = tmp_path / "organ.stl"
     mesh.write_text("solid organ\nendsolid organ\n")
     configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
@@ -274,9 +282,97 @@ def test_pyvista_cad_mesh_uses_modified_display_attributes(tmp_path):
     pyvista_api.render_volume(volume, configuration)
     pyvista_api.flush_pyvista_rendering(configuration)
 
+    assert configuration.pv.read_paths == []
+    assert configuration.add_mesh_calls == 0
+
+
+def test_pyvista_does_not_mesh_boolean_component():
+    configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
+    component = _box_volume()
+    component.material = "Component"
+
+    pyvista_api.render_volume(component, configuration)
+    pyvista_api.flush_pyvista_rendering(configuration)
+
+    assert configuration.pv.cube_calls == 0
+    assert configuration.add_mesh_calls == 0
+
+
+def test_pyvista_does_not_render_boolean_operand_when_operation_fails(monkeypatch, capsys):
+    configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
+    first = _box_volume()
+    first.name = "first"
+    first.material = "Component"
+    second = _box_volume()
+    second.name = "second"
+    second.material = "Component"
+    result = GVolume("difference")
+    result.material = "G4_AIR"
+    result.solidsOpr = "first - second"
+
+    monkeypatch.setattr(pyvista_api, "_build_direct_boolean_mesh", lambda *args: None)
+    monkeypatch.setattr(pyvista_api, "_boolean_with_pymeshlab", lambda *args: None)
+    monkeypatch.setattr(pyvista_api, "_boolean_with_vtk", lambda *args: None)
+
+    pyvista_api.render_volume(first, configuration)
+    pyvista_api.render_volume(second, configuration)
+    pyvista_api.render_volume(result, configuration)
+    pyvista_api.flush_pyvista_rendering(configuration)
+
+    assert configuration.add_mesh_calls == 0
+    assert "failed; skipping volume" in capsys.readouterr().out
+
+
+def test_pyvista_builds_elliptical_mirror_without_rendering_boolean_operands():
+    configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
+
+    outer = GVolume("outer")
+    outer.solid = "G4EllipticalTube"
+    outer.parameters = "100*mm, 80*mm, 5*mm"
+    outer.material = "Component"
+    inner = GVolume("inner")
+    inner.solid = "G4EllipticalTube"
+    inner.parameters = "90*mm, 70*mm, 6*mm"
+    inner.material = "Component"
+    shell = GVolume("shell")
+    shell.material = "Component"
+    shell.solidsOpr = "outer - inner"
+    span = GVolume("span")
+    span.solid = "G4Tubs"
+    span.parameters = "0*mm, 500*mm, 10*mm, 90*deg, 300*deg"
+    span.material = "Component"
+    mirror = GVolume("mirror")
+    mirror.material = "G4_Al"
+    mirror.solidsOpr = "shell - span"
+
+    for volume in (outer, inner, shell, span, mirror):
+        pyvista_api.render_volume(volume, configuration)
+    pyvista_api.flush_pyvista_rendering(configuration)
+
     assert configuration.add_mesh_calls == 1
-    assert configuration.add_mesh_kwargs[0]["color"] == "ff0000"
-    assert configuration.add_mesh_kwargs[0]["opacity"] == 0.05
+    points = configuration.added_meshes[0].points
+    assert np.max(np.linalg.norm(points[:, :2], axis=1)) <= 100.0 + 1.0e-9
+    angles = np.degrees(np.arctan2(points[:, 1], points[:, 0])) % 360.0
+    assert np.all((angles >= 30.0 - 1.0e-9) & (angles <= 90.0 + 1.0e-9))
+
+
+def test_pyvista_invisible_mother_still_transforms_daughter():
+    configuration = FakeConfiguration(verbosity=0, pyvista_fast=False)
+    mother = _box_volume()
+    mother.name = "mother"
+    mother.position = "10*mm, 0*mm, 0*mm"
+    mother.visible = 0
+    daughter = _box_volume()
+    daughter.name = "daughter"
+    daughter.mother = "mother"
+    daughter.position = "0*mm, 20*mm, 0*mm"
+
+    pyvista_api.render_volume(mother, configuration)
+    pyvista_api.render_volume(daughter, configuration)
+    pyvista_api.flush_pyvista_rendering(configuration)
+
+    assert configuration.add_mesh_calls == 1
+    assert np.allclose(configuration.added_meshes[0].points, [10.0, 20.0, 0.0])
 
 
 def test_pyvista_accepts_legacy_cad_parameter_layout(tmp_path):
