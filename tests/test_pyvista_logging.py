@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from pygemc.api.gconfiguration import GConfiguration, get_arguments
 from pygemc.api.gvolume import GVolume
@@ -388,3 +389,87 @@ def test_pyvista_accepts_legacy_cad_parameter_layout(tmp_path):
 
     assert configuration.pv.read_paths == [str(mesh)]
     assert configuration.add_mesh_calls == 1
+
+
+@pytest.mark.parametrize("cuts", [(0, 0), (-15, 25), (0, 30), (-30, 0), (-100, 100)])
+def test_pyvista_ellipsoid_is_closed_and_respects_z_cuts(cuts):
+    import pyvista as pv
+
+    configuration = FakeConfiguration(verbosity=0)
+    configuration.pv = pv
+    ellipsoid = GVolume("ellipsoid")
+    ellipsoid.solid = "G4Ellipsoid"
+    ellipsoid.parameters = f"20*mm, 30*mm, 40*mm, {cuts[0]}*mm, {cuts[1]}*mm"
+
+    mesh, _ = pyvista_api._build_volume_mesh(ellipsoid, configuration)
+
+    bottom, top = (-40, 40) if cuts == (0, 0) else (max(-40, cuts[0]), min(40, cuts[1]))
+    assert mesh is not None
+    assert mesh.is_all_triangles
+    assert mesh.n_open_edges == 0
+    assert mesh.bounds[4:] == pytest.approx((bottom, top))
+    expected_volume = np.pi * 20 * 30 * (top - bottom - (top**3 - bottom**3) / (3 * 40**2))
+    assert mesh.volume == pytest.approx(expected_volume, rel=0.003)
+
+
+def test_pyvista_boolean_accepts_ellipsoid_operand(monkeypatch):
+    import pyvista as pv
+
+    configuration = FakeConfiguration(verbosity=0)
+    configuration.pv = pv
+    outer = GVolume("outer")
+    outer.make_box(30, 40, 50)
+    inner = GVolume("inner")
+    inner.solid = "G4Ellipsoid"
+    inner.parameters = "20*mm, 30*mm, 40*mm, 0*mm, 0*mm"
+    shell = GVolume("shell")
+    shell.solidsOpr = "outer - inner"
+    configuration._pyvista_gvolumes = {volume.name: volume for volume in (outer, inner, shell)}
+    operands = []
+
+    def boolean(pv, mesh_a, mesh_b, op):
+        operands.append((mesh_a, mesh_b, op))
+        return mesh_a
+
+    monkeypatch.setattr(pyvista_api, "_boolean_with_pymeshlab", boolean)
+    assert pyvista_api._build_boolean_mesh(pv, shell, configuration) is not None
+    assert len(operands) == 1
+    assert operands[0][1].n_open_edges == 0
+    assert operands[0][2] == "-"
+
+
+@pytest.mark.parametrize("absolute", [False, True])
+def test_pyvista_boolean_placement_conventions(monkeypatch, absolute):
+    import pyvista as pv
+
+    configuration = FakeConfiguration(verbosity=0)
+    configuration.pv = pv
+    outer = GVolume("outer")
+    outer.make_box(30, 40, 50)
+    outer.position = "10*mm, 20*mm, 30*mm"
+    outer.rotations = ["0*deg, 0*deg, 90*deg"]
+    outer.g4placement_type = "passive"
+    inner = GVolume("inner")
+    inner.make_box(1, 2, 3)
+    inner.position = "14*mm, 25*mm, 36*mm"
+    inner.g4placement_type = "passive"
+    shell = GVolume("shell")
+    shell.solidsOpr = ("@ " if absolute else "") + "outer - inner"
+    configuration._pyvista_gvolumes = {volume.name: volume for volume in (outer, inner, shell)}
+    operands = []
+
+    def boolean(pv, mesh_a, mesh_b, op):
+        operands.append(mesh_b)
+        return mesh_a
+
+    monkeypatch.setattr(pyvista_api, "_boolean_with_pymeshlab", boolean)
+    result = pyvista_api._build_boolean_mesh(pv, shell, configuration)
+    assert result is not None
+    assert len(operands) == 1
+    if absolute:
+        assert operands[0].center == pytest.approx((-5, 4, 6))
+        assert operands[0].bounds == pytest.approx((-7, -3, 3, 5, 3, 9))
+    else:
+        assert operands[0].center == pytest.approx((14, 25, 36))
+        assert operands[0].bounds == pytest.approx((13, 15, 23, 27, 33, 39))
+    assert result.center == pytest.approx((0, 0, 0))

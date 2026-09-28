@@ -302,6 +302,7 @@ def _build_volume_mesh(gvolume, gconfiguration):
 		'G4Trap': add_general_trap,
 		'G4Sphere': add_sphere,
 		'G4EllipticalTube': add_elliptical_tube,
+		'G4Ellipsoid': add_ellipsoid,
 		'G4Paraboloid': add_paraboloid,
 	}
 	builder = builders.get(gvolume.solid)
@@ -1097,6 +1098,27 @@ def add_polycone(pv, phi_start, phi_total, zplane, iradius, oradius):
 	return result
 
 
+def add_ellipsoid(pv, pars):
+	"""Build a closed G4Ellipsoid with optional lower and upper Z cuts."""
+	dx, dy, dz, zbottom, ztop = map(float, pars[:5])
+	if min(dx, dy, dz) <= 0:
+		raise ValueError("Ellipsoid semi-axes must be positive")
+	# Geant4's default pair (0, 0) means an uncut ellipsoid.
+	if zbottom == 0.0 and ztop == 0.0:
+		zbottom, ztop = -dz, dz
+	zbottom, ztop = max(zbottom, -dz), min(ztop, dz)
+	if zbottom >= ztop:
+		raise ValueError("Ellipsoid Z cuts must enclose a nonempty interval")
+
+	mesh = pv.Sphere(radius=1.0, theta_resolution=96, phi_resolution=97)
+	mesh.points = np.asarray(mesh.points, dtype=float) * np.array([dx, dy, dz])
+	if zbottom > -dz:
+		mesh = mesh.clip_closed_surface(normal=(0, 0, 1), origin=(0, 0, zbottom))
+	if ztop < dz:
+		mesh = mesh.clip_closed_surface(normal=(0, 0, -1), origin=(0, 0, ztop))
+	return mesh.triangulate().clean()
+
+
 def add_elliptical_tube(pv, pars):
 	"""Build a G4EllipticalTube (dx, dy semi-axes; dz half-length) by extruding an ellipse."""
 	dx, dy, dz = pars[0], pars[1], pars[2]
@@ -1577,11 +1599,10 @@ def _add_box_minus_tube(pv, box_volume, tube_volume):
 def _build_boolean_mesh(pv, gvolume, gconfiguration):
 	"""Build the mesh of a boolean-operation volume (`solidsOpr` = "a - b" / "a + b" / "a * b").
 
-	Operand meshes are built recursively in their own local frames from the published
-	volume registry; the second operand carries its relative transform. Results are
-	cached by operation string (identical operations across sectors share one mesh).
-	pymeshlab performs the boolean when available, the VTK filter otherwise; if both
-	fail, the first operand is displayed as an approximation.
+	Operand meshes are built recursively in their own local frames. A leading ``@``
+	means both placements use common mother coordinates; otherwise the second operand
+	carries its relative transform. Results stay in the first operand's local frame
+	and are cached by operation string. Failed operations are omitted.
 	"""
 	if not hasattr(gconfiguration, '_pyvista_boolean_cache'):
 		gconfiguration._pyvista_boolean_cache = {}
@@ -1593,12 +1614,19 @@ def _build_boolean_mesh(pv, gvolume, gconfiguration):
 
 	registry = getattr(gconfiguration, '_pyvista_gvolumes', {})
 	tokens = opr.split()
+	absolute = bool(tokens and tokens[0] == '@')
+	if absolute:
+		tokens = tokens[1:]
 	result = None
 	if len(tokens) == 3 and tokens[1] in ('+', '-', '*'):
 		gvol_a = registry.get(tokens[0])
 		gvol_b = registry.get(tokens[2])
 		if gvol_a is not None and gvol_b is not None:
-			result = _build_direct_boolean_mesh(pv, gvol_a, gvol_b, tokens[1], registry)
+			f_a, t_a = _boolean_component_transform(gvol_a)
+			# Direct builders assume that the first operand is at identity.
+			if not absolute or (np.allclose(f_a, np.eye(3), atol=1e-9) and
+			                    np.allclose(t_a, 0.0, atol=1e-9)):
+				result = _build_direct_boolean_mesh(pv, gvol_a, gvol_b, tokens[1], registry)
 
 		if result is None and gvol_a is not None and gvol_b is not None:
 			mesh_a = _build_volume_mesh(gvol_a, gconfiguration)[0]
@@ -1609,6 +1637,8 @@ def _build_boolean_mesh(pv, gvolume, gconfiguration):
 
 		if result is None and mesh_a is not None and mesh_b is not None:
 			f_b, t_b = _boolean_component_transform(gvol_b)
+			if absolute:
+				f_b, t_b = f_a.T @ f_b, f_a.T @ (t_b - t_a)
 			mesh_b = mesh_b.copy()
 			mesh_b.points = mesh_b.points @ f_b.T + t_b
 
