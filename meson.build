@@ -1,5 +1,8 @@
 project('pygemc', version: '0.4.0')
 
+# Export the resolved source directory for consumers sharing this subproject.
+pygemc_source_dir = meson.current_source_dir()
+
 # Use whatever python3 is on PATH to bootstrap the venv.
 # The venv (and everything in it) is what the parent project uses for all tests.
 python3 = find_program('python3')
