@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SINCE="${DEVMD_SINCE:-2026-06-17}"
+SINCE="${DEVMD_SINCE:-2026-10-08}"
 
 echo "[devmd] start"
 

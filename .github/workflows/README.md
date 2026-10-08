@@ -36,7 +36,10 @@ before publishing updated images, and the downstream Deploy workflow runs only a
   - Authorization: uses the selected GitHub environment and OIDC `id-token: write`, not a PyPI API token.
 - [`dev_release.yml`](dev_release.yml) — **Nightly Dev Release**
   - Trigger: daily at 01:34 UTC or manual dispatch.
-  - Effect: moves the `dev` tag and recreates the development prerelease from generated notes.
+  - Effect: `gemc/DRelease@v1` moves the `dev` tag and recreates the development prerelease.
+    Notes include commits after the latest version tag's date.
+  - Upcoming in the next release: DRelease replaces duplicated release steps and the fixed start date.
+    Publication is serialized, and notes are generated in the runner's temporary directory.
 
 ## Cross-repository contract
 
