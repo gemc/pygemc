@@ -1229,10 +1229,11 @@ def _pymeshlab_worker():
 		if not isinstance(ready, dict) or ready.get('status') != 'ready':
 			proc.kill()
 			_pymeshlab_worker_disabled = True
+			detail = ready.get('error', '') if isinstance(ready, dict) else ''
 			warnings.warn(
 				'PyVista boolean previews require pymeshlab for reliable curved-solid operations; '
 				'its worker could not start. Check that pymeshlab is installed in this Python environment. '
-				'Using the less reliable VTK fallback.', RuntimeWarning, stacklevel=2)
+				f'Using the less reliable VTK fallback. {detail}'.rstrip(), RuntimeWarning, stacklevel=2)
 			return None
 	except Exception:
 		_pymeshlab_worker_disabled = True

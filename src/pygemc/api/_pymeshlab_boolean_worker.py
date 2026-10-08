@@ -63,16 +63,31 @@ def main():
 
 	try:
 		import pymeshlab
-	except Exception:
-		write_msg(protocol_out, {'status': 'no_pymeshlab'})
+	except Exception as error:
+		write_msg(protocol_out, {'status': 'no_pymeshlab', 'error': str(error)})
 		return
-	write_msg(protocol_out, {'status': 'ready'})
 
 	filters = {
 		'-': 'generate_boolean_difference',
 		'+': 'generate_boolean_union',
 		'*': 'generate_boolean_intersection',
 	}
+	required = (
+		'meshing_remove_duplicate_vertices', 'meshing_remove_duplicate_faces',
+		'meshing_remove_null_faces', 'meshing_remove_unreferenced_vertices',
+		'meshing_repair_non_manifold_edges', 'meshing_close_holes',
+		'meshing_re_orient_faces_coherently', 'get_geometric_measures',
+		'meshing_invert_face_orientation', *filters.values(),
+	)
+	missing = [name for name in required if not hasattr(pymeshlab.MeshSet, name)]
+	if missing:
+		write_msg(protocol_out, {
+			'status': 'missing_filters',
+			'error': f'Native filters failed to load: {", ".join(missing)}. '
+			         'On Debian/Ubuntu, check that libopengl0 is installed.',
+		})
+		return
+	write_msg(protocol_out, {'status': 'ready'})
 
 	while True:
 		msg = read_msg(stdin)

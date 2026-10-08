@@ -531,14 +531,18 @@ def test_pyvista_curved_subtraction_and_intersection_chain(capsys):
     assert "failed; skipping volume" not in capsys.readouterr().out
 
 
-def test_pyvista_reports_missing_pymeshlab_once(monkeypatch):
+@pytest.mark.parametrize("status, error", [
+    ("no_pymeshlab", ""),
+    ("missing_filters", "Native filters failed to load; check libopengl0"),
+])
+def test_pyvista_reports_missing_pymeshlab_once(monkeypatch, status, error):
     import io
     import subprocess
     from types import SimpleNamespace
     from pygemc.api import _pymeshlab_boolean_worker as worker
 
     response = io.BytesIO()
-    worker.write_msg(response, {"status": "no_pymeshlab"})
+    worker.write_msg(response, {"status": status, "error": error})
     response.seek(0)
     killed = []
     process = SimpleNamespace(stdout=response, kill=lambda: killed.append(True))
@@ -551,4 +555,26 @@ def test_pyvista_reports_missing_pymeshlab_once(monkeypatch):
         assert pyvista_api._pymeshlab_worker() is None
 
     assert len(recorded) == 1
+    assert error in str(recorded[0].message)
     assert killed == [True]
+
+
+def test_pymeshlab_worker_rejects_import_with_unloaded_native_filters():
+    import io
+    import subprocess
+    import sys
+    from pygemc.api import _pymeshlab_boolean_worker as worker
+
+    # A successful import does not guarantee that pymeshlab loaded its native plugins.
+    code = (
+        "import sys; from types import SimpleNamespace; "
+        "sys.modules['pymeshlab'] = SimpleNamespace(MeshSet=type('MeshSet', (), {})); "
+        "from pygemc.api import _pymeshlab_boolean_worker as w; w.main()"
+    )
+    result = subprocess.run([sys.executable, "-c", code], input=b"", capture_output=True, check=True)
+    response = worker.read_msg(io.BytesIO(result.stdout))
+
+    assert response["status"] == "missing_filters"
+    assert "generate_boolean_intersection" in response["error"]
+    assert "meshing_re_orient_faces_coherently" in response["error"]
+    assert "libopengl0" in response["error"]

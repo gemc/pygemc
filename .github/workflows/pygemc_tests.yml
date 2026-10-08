@@ -28,8 +28,28 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install native mesh dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0
+
       - name: Install pygemc and dev dependencies
         run: pip install -e ".[dev]"
+
+      - name: Check pymeshlab boolean filters
+        run: |
+          python - <<'PY'
+          import pymeshlab
+          required = (
+              'meshing_re_orient_faces_coherently',
+              'generate_boolean_difference',
+              'generate_boolean_union',
+              'generate_boolean_intersection',
+          )
+          missing = [name for name in required if not hasattr(pymeshlab.MeshSet, name)]
+          if missing:
+              raise RuntimeError(f'Pymeshlab native filters failed to load: {missing}')
+          PY
 
       - name: Run tests
         run: pytest -v
