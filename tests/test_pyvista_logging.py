@@ -473,3 +473,82 @@ def test_pyvista_boolean_placement_conventions(monkeypatch, absolute):
         assert operands[0].center == pytest.approx((14, 25, 36))
         assert operands[0].bounds == pytest.approx((13, 15, 23, 27, 33, 39))
     assert result.center == pytest.approx((0, 0, 0))
+
+
+@pytest.mark.parametrize("backend", ["pymeshlab", "vtk"])
+@pytest.mark.parametrize("radius", [1.0, 100.0])
+def test_pyvista_sphere_intersection_is_closed_and_has_lens_volume(backend, radius):
+    import pyvista as pv
+
+    first = pyvista_api.add_sphere(pv, [0, radius, 0, 360, 0, 180])
+    second = first.copy()
+    separation = 1.6 * radius
+    second.translate((0, 0, separation), inplace=True)
+    original_points = first.points.copy(), second.points.copy()
+
+    if backend == "pymeshlab":
+        mesh = pyvista_api._boolean_with_pymeshlab(pv, first, second, "*")
+    else:
+        mesh = pyvista_api._boolean_with_vtk(first, second, "*")
+
+    assert mesh is not None
+    assert mesh.clean().n_open_edges == 0
+    assert mesh.bounds[4:] == pytest.approx((separation - radius, radius))
+    expected_volume = np.pi * (4 * radius + separation) * (2 * radius - separation)**2 / 12
+    assert mesh.volume == pytest.approx(expected_volume, rel=0.01)
+    assert np.array_equal(first.points, original_points[0])
+    assert np.array_equal(second.points, original_points[1])
+
+
+def test_pyvista_curved_subtraction_and_intersection_chain(capsys):
+    import pyvista as pv
+
+    configuration = FakeConfiguration(verbosity=0)
+    configuration.pv = pv
+    barrel = GVolume("barrel")
+    barrel.make_polycone(0, 360, zplane=[-50, 50], iradius=[0, 0], oradius=[40, 40])
+    ellipsoid = GVolume("ellipsoid")
+    ellipsoid.solid = "G4Ellipsoid"
+    ellipsoid.parameters = "20*mm, 30*mm, 35*mm, 0*mm, 0*mm"
+    shell = GVolume("shell")
+    shell.solidsOpr = "barrel - ellipsoid"
+    cut = GVolume("cut")
+    cut.make_box(50, 50, 50)
+    cut.set_position(0, 0, 50)
+    mirror = GVolume("mirror")
+    mirror.solidsOpr = "shell * cut"
+    configuration._pyvista_gvolumes = {
+        volume.name: volume for volume in (barrel, ellipsoid, shell, cut, mirror)
+    }
+
+    mesh = pyvista_api._build_boolean_mesh(pv, mirror, configuration)
+
+    assert mesh is not None
+    assert mesh.clean().n_open_edges == 0
+    assert mesh.bounds[4:] == pytest.approx((0, 50))
+    expected_volume = (np.pi * 40**2 * 100 - 4 * np.pi * 20 * 30 * 35 / 3) / 2
+    assert mesh.volume == pytest.approx(expected_volume, rel=0.003)
+    assert "failed; skipping volume" not in capsys.readouterr().out
+
+
+def test_pyvista_reports_missing_pymeshlab_once(monkeypatch):
+    import io
+    import subprocess
+    from types import SimpleNamespace
+    from pygemc.api import _pymeshlab_boolean_worker as worker
+
+    response = io.BytesIO()
+    worker.write_msg(response, {"status": "no_pymeshlab"})
+    response.seek(0)
+    killed = []
+    process = SimpleNamespace(stdout=response, kill=lambda: killed.append(True))
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(pyvista_api, "_pymeshlab_worker_proc", None)
+    monkeypatch.setattr(pyvista_api, "_pymeshlab_worker_disabled", False)
+
+    with pytest.warns(RuntimeWarning, match="Check that pymeshlab is installed") as recorded:
+        assert pyvista_api._pymeshlab_worker() is None
+        assert pyvista_api._pymeshlab_worker() is None
+
+    assert len(recorded) == 1
+    assert killed == [True]

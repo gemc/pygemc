@@ -1229,6 +1229,10 @@ def _pymeshlab_worker():
 		if not isinstance(ready, dict) or ready.get('status') != 'ready':
 			proc.kill()
 			_pymeshlab_worker_disabled = True
+			warnings.warn(
+				'PyVista boolean previews require pymeshlab for reliable curved-solid operations; '
+				'its worker could not start. Check that pymeshlab is installed in this Python environment. '
+				'Using the less reliable VTK fallback.', RuntimeWarning, stacklevel=2)
 			return None
 	except Exception:
 		_pymeshlab_worker_disabled = True
@@ -1287,8 +1291,24 @@ def _boolean_with_pymeshlab(pv, mesh_a, mesh_b, op):
 def _boolean_with_vtk(mesh_a, mesh_b, op):
 	"""Boolean operation through the VTK filter (fallback when pymeshlab fails)."""
 	try:
-		a = _mesh_without_data(mesh_a).triangulate()
-		b = _mesh_without_data(mesh_b).triangulate()
+		import pyvista as pv
+		points = np.vstack((mesh_a.points, mesh_b.points)).astype(float)
+		lower, upper = points.min(axis=0), points.max(axis=0)
+		origin = 0.5 * (lower + upper)
+		scale = np.max(upper - lower)
+		if not np.isfinite(scale) or scale <= 0:
+			return None
+
+		def prepare(mesh):
+			# VTK's intersection filter is sensitive to coordinate scale. Weld revolution
+			# seams in a common unit-sized frame and discard collapsed axis lines/vertices.
+			tri = _mesh_without_data(mesh).triangulate()
+			tri = pv.PolyData((tri.points.astype(float) - origin) / scale, tri.faces.copy())
+			tri = tri.clean(tolerance=1.0e-8)
+			tri = pv.PolyData(tri.points.copy(), tri.faces.copy()).triangulate()
+			return tri.compute_normals(consistent_normals=True, auto_orient_normals=True)
+
+		a, b = prepare(mesh_a), prepare(mesh_b)
 		if op == '-':
 			result = a.boolean_difference(b)
 		elif op == '+':
@@ -1297,7 +1317,12 @@ def _boolean_with_vtk(mesh_a, mesh_b, op):
 			result = a.boolean_intersection(b)
 		if result is not None and result.n_points == 0:
 			return None
-		return result.clean() if result is not None else None
+		if result is not None:
+			result = result.clean(tolerance=1.0e-8)
+			if not result.is_all_triangles or result.n_open_edges:
+				return None
+			result.points = result.points * scale + origin
+		return result
 	except Exception:
 		return None
 
