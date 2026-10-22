@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Python API for GEMC geometry definition and output analysis"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.15"
 authors = [{ name = "Maurizio Ungaro", email = "ungaro@jlab.org" }]
 keywords = ["geant4", "simulation", "detector", "physics", "gemc"]
 classifiers = [
@@ -20,6 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [

@@ -40,13 +40,29 @@ Docker images on [Docker Hub](https://hub.docker.com/r/gemc/gemc) (and `ghcr.io/
 
 # Installation
 
-## Stable PyPI Install
+pygemc installs in one of two modes; choose deliberately:
 
-Use a Python virtual environment for direct `pip` installs. 
-On macOS with Homebrew use `/opt/homebrew/bin/python3` to ensure the correct interpreter is used:
+- **`latest`** — the published release from PyPI. This is the default and what most users want.
+- **`dev`** — an editable install of this source tree, for developing or testing pygemc itself.
+
+Select the mode by choosing the `pip` command in your virtual environment:
 
 ```shell
-/opt/homebrew/bin/python3 -m venv ~/venv/pygemc
+python -m pip install pygemc        # latest: the stable release from PyPI
+python -m pip install -e ".[dev]"   # dev: editable checkout, run from the repository root
+```
+
+The [Stable PyPI Install](#stable-pypi-install-latest) and [Tests](#tests) sections detail each path.
+
+## Stable PyPI Install (`latest`)
+
+Use Python 3.10-3.14 in a virtual environment for direct `pip` installs. The upper version limit is
+upcoming in the next release; `pymeshlab` remains a required dependency.
+On macOS with Homebrew, install and select Python 3.14 explicitly:
+
+```shell
+brew install python@3.14
+/opt/homebrew/bin/python3.14 -m venv ~/venv/pygemc
 source ~/venv/pygemc/bin/activate
 python -m pip install --upgrade pip
 ```
@@ -65,8 +81,12 @@ python -m pip install "pygemc[root]"
 
 ## Install with GEMC
 
-When GEMC is built from source, pygemc available in your scripts without 
-any activation step or separate pip install and gemc and Python tools are available:
+Upcoming in the next release: pygemc manages the Python environments for GEMC and CLAS12 systems.
+Its Meson subproject selects Python 3.10-3.14, creates the build environment, and registers the
+install hook that installs pygemc and its dependencies under `<prefix>/python_env`.
+Both consumers use the exported build interpreter.
+
+After adding `<prefix>/bin` and `<prefix>/python_env/bin` to `PATH`, GEMC and the Python tools are available:
 
 ```shell
 gemc -v
@@ -332,7 +352,15 @@ GitHub README pages cannot embed `.vtksz` files directly, so the preview image l
 
 ## Tests
 
-Run the standalone Python tests:
+Install the package in editable mode (the `dev` install mode) with its development dependencies (`pytest`,
+`pytest-cov`, `ruff`). The editable install also makes `pytest` import the in-tree `src/pygemc` sources instead
+of a previously installed PyPI wheel, which would otherwise shadow them and break test collection:
+
+```shell
+python -m pip install -e ".[dev]"
+```
+
+Then run the standalone Python tests:
 
 ```shell
 pytest
@@ -383,7 +411,7 @@ source repository. See [`NOTICE`](NOTICE) for attribution.
 
 [tests]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml
 [tests-badge]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml/badge.svg
-[python-badge]: https://img.shields.io/badge/python-3.10%2B-blue.svg
+[python-badge]: https://img.shields.io/badge/python-3.10%E2%80%933.14-blue.svg
 [pypi]: https://pypi.org/project/pygemc/
 [pypi-badge]: https://img.shields.io/pypi/v/pygemc.svg?cacheSeconds=300
 [license]: LICENSE
