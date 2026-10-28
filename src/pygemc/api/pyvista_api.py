@@ -294,6 +294,11 @@ def _build_volume_mesh(gvolume, gconfiguration):
 	if gvolume.solid == 'G4Polyhedra':
 		return _add_polyhedra_from_gvolume(pv, gvolume), ()
 
+	# G4CutTubs carries dimensionless normal vectors, which get_dimensions cannot parse,
+	# so it is meshed through a dedicated parser like the polycone/polyhedra solids.
+	if gvolume.solid == 'G4CutTubs':
+		return _add_cut_tube_from_gvolume(pv, gvolume), ()
+
 	builders = {
 		'G4Box': add_box,
 		'G4Cons': add_cons,
@@ -301,6 +306,8 @@ def _build_volume_mesh(gvolume, gconfiguration):
 		'G4Trd': add_trapezoid,
 		'G4Trap': add_general_trap,
 		'G4Sphere': add_sphere,
+		'G4Torus': add_torus,
+		'G4Para': add_parallelepiped,
 		'G4EllipticalTube': add_elliptical_tube,
 		'G4Ellipsoid': add_ellipsoid,
 		'G4Paraboloid': add_paraboloid,
@@ -467,7 +474,7 @@ def _prepare_volume_render_entry(gvolume, gconfiguration):
 
 	# The mesh is stored in local coordinates; the world transform is applied at
 	# flush time, once all mothers have been published.
-	flat_solids = {'G4Box', 'G4Trd', 'G4Trap'}
+	flat_solids = {'G4Box', 'G4Trd', 'G4Trap', 'G4Para'}
 	return {
 		"name": gvolume.name,
 		"mesh": mesh,
@@ -845,6 +852,151 @@ def add_cons(pv, pars):
 	cons = cons.triangulate().clean()
 
 	return cons
+
+
+def add_torus(pv, pars):
+	"""Build a G4Torus by revolving a circular tube cross-section around the z-axis.
+
+	pars = (rmin, rmax, rtor, phi_start_deg, phi_total_deg)
+	  rmin : inner radius of the tube (0 for a solid tube)
+	  rmax : outer radius of the tube
+	  rtor : swept radius (distance from the z-axis to the tube centre)
+	  phi_start, phi_total : azimuthal start and span (degrees)
+	"""
+	rmin, rmax, rtor, phi_start, phi_total = map(float, pars)
+	if rmax <= 0 or rtor <= 0:
+		raise ValueError(f"Invalid torus sizes: rmax={rmax}, rtor={rtor}")
+
+	ncross = 64
+	res = max(32, int(360 * (phi_total / 360.0 if phi_total < 360.0 else 1.0)))
+
+	# A sector with an inner radius shows its bore at the two end caps, so it is built from
+	# an annular cross-section. For a full torus the bore is hidden, and for a solid tube
+	# there is no bore, so both of those revolve a filled disk (which stays watertight).
+	if rmin > 0.0 and phi_total < 360.0:
+		profile = pv.Disc(center=(rtor, 0.0, 0.0), inner=rmin, outer=rmax,
+		                  normal=(0.0, 1.0, 0.0), r_res=2, c_res=ncross)
+	else:
+		ang = np.linspace(0.0, 2.0 * np.pi, ncross, endpoint=False)
+		pts = np.column_stack([
+			rtor + rmax * np.cos(ang),
+			np.zeros(ncross),
+			rmax * np.sin(ang),
+		])
+		profile = pv.PolyData()
+		profile.points = pts
+		profile.faces = np.array([ncross] + list(range(ncross)), dtype=np.int64)
+
+	torus = profile.extrude_rotate(angle=phi_total, resolution=res, capping=True)
+	if phi_total < 360.0 or abs(phi_start) > 1e-12:
+		torus = torus.rotate_z(phi_start, inplace=False)
+	return torus.triangulate().clean()
+
+
+def add_parallelepiped(pv, pars):
+	"""Build a G4Para (parallelepiped) from its eight sheared vertices.
+
+	pars = (dx, dy, dz, alpha_deg, theta_deg, phi_deg) — half-lengths and shear angles.
+	A vertex with signs (sx, sy, sz) in {-1, +1} follows the Geant4 G4Para layout:
+	  x = sx*dx + sy*dy*tan(alpha) + sz*dz*tan(theta)*cos(phi)
+	  y = sy*dy + sz*dz*tan(theta)*sin(phi)
+	  z = sz*dz
+	"""
+	dx, dy, dz, alpha, theta, phi = map(float, pars)
+	ta = np.tan(np.radians(alpha))
+	tt = np.tan(np.radians(theta))
+	cp, sp = np.cos(np.radians(phi)), np.sin(np.radians(phi))
+
+	# Vertices ordered as bottom face (z=-dz) then top face (z=+dz), both counter-clockwise.
+	signs = [(-1, -1, -1), (+1, -1, -1), (+1, +1, -1), (-1, +1, -1),
+	         (-1, -1, +1), (+1, -1, +1), (+1, +1, +1), (-1, +1, +1)]
+	verts = np.array([
+		[sx * dx + sy * dy * ta + sz * dz * tt * cp,
+		 sy * dy + sz * dz * tt * sp,
+		 sz * dz]
+		for sx, sy, sz in signs
+	], dtype=float)
+
+	faces = np.hstack([
+		[4, 0, 1, 2, 3],  # bottom (-z)
+		[4, 4, 5, 6, 7],  # top (+z)
+		[4, 0, 1, 5, 4],  # -y
+		[4, 2, 3, 7, 6],  # +y
+		[4, 1, 2, 6, 5],  # +x
+		[4, 3, 0, 4, 7],  # -x
+	]).astype(np.int64)
+
+	mesh = pv.PolyData(verts, faces).triangulate().clean()
+	mesh.compute_normals(split_vertices=True, feature_angle=30, inplace=True)
+	return mesh
+
+
+def add_cut_tube(pv, pars):
+	"""Build a G4CutTubs: a G4Tubs clipped by two tilted end planes.
+
+	pars = (rmin, rmax, hz, phi_start_deg, phi_total_deg,
+	        lnx, lny, lnz,   # outside normal of the -z cut plane
+	        hnx, hny, hnz)   # outside normal of the +z cut plane
+	The material is retained on the side opposite each outside normal.
+	"""
+	rmin, rmax, hz = float(pars[0]), float(pars[1]), float(pars[2])
+	phi_start, phi_total = float(pars[3]), float(pars[4])
+	low = np.array(pars[5:8], dtype=float)
+	high = np.array(pars[8:11], dtype=float)
+	if rmax <= 0 or hz <= 0:
+		raise ValueError(f"Invalid cut tube sizes: rmax={rmax}, hz={hz}")
+
+	# Build a manifold straight tube taller than the final solid (an extruded annular disc
+	# clips cleanly, where an extrude_rotate tube does not), then trim with the cut planes.
+	# clip_closed_surface keeps the +normal side and returns a closed surface, so the body
+	# stays watertight through the whole chain.
+	pad = rmax + hz
+	half = hz + pad
+	disc = pv.Disc(center=(0.0, 0.0, -half), inner=max(rmin, 0.0), outer=rmax,
+	               normal=(0.0, 0.0, 1.0), r_res=2, c_res=128)
+	tube = disc.extrude((0.0, 0.0, 2.0 * half), capping=True).triangulate().clean()
+
+	# Keep the material side (opposite each outside normal) of the two end cut planes.
+	tube = tube.clip_closed_surface(normal=-low, origin=(0.0, 0.0, -hz))
+	tube = tube.clip_closed_surface(normal=-high, origin=(0.0, 0.0, hz))
+
+	# Phi sector: clip the two radial planes through the z-axis. Only convex spans (<=180 deg)
+	# are a plane intersection; wider spans are left full in the preview. The clip can report
+	# a non-manifold edge where a plane grazes the bore, so fall back to the full tube there.
+	if phi_total < 360.0 and phi_total <= 180.0 + 1e-6:
+		a0 = np.radians(phi_start)
+		a1 = np.radians(phi_start + phi_total)
+		n0 = (-np.sin(a0), np.cos(a0), 0.0)  # inward at the start edge
+		n1 = (np.sin(a1), -np.cos(a1), 0.0)  # inward at the end edge
+		try:
+			sector = tube.clip_closed_surface(normal=n0, origin=(0.0, 0.0, 0.0))
+			sector = sector.clip_closed_surface(normal=n1, origin=(0.0, 0.0, 0.0))
+			if sector.n_points > 0:
+				tube = sector
+		except ValueError:
+			pass  # keep the full tube rather than failing the whole render
+
+	return tube.triangulate().clean()
+
+
+def _add_cut_tube_from_gvolume(pv, gvolume):
+	"""Parse G4CutTubs parameters (3 lengths, 2 angles, 2 dimensionless normals) and mesh it."""
+	from .g4_units import convert_angle, convert_length
+	tokens = [t.strip() for t in gvolume.parameters.split(',') if t.strip()]
+	if len(tokens) != 11:
+		return None
+	rmin = convert_length(tokens[0], 'mm')
+	rmax = convert_length(tokens[1], 'mm')
+	hz = convert_length(tokens[2], 'mm')
+	phi_start = convert_angle(tokens[3], 'deg')
+	phi_total = convert_angle(tokens[4], 'deg')
+
+	def num(tok):
+		return float(tok.split('*')[0])
+
+	low = [num(t) for t in tokens[5:8]]
+	high = [num(t) for t in tokens[8:11]]
+	return add_cut_tube(pv, (rmin, rmax, hz, phi_start, phi_total, *low, *high))
 
 
 def add_trapezoid(pv, pars) -> None:

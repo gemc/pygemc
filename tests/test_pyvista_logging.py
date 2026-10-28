@@ -412,6 +412,49 @@ def test_pyvista_ellipsoid_is_closed_and_respects_z_cuts(cuts):
     assert mesh.volume == pytest.approx(expected_volume, rel=0.003)
 
 
+@pytest.mark.parametrize("name,build", [
+    ("torus_solid", lambda v: v.make_torus(0, 10, 50)),
+    ("torus_hollow", lambda v: v.make_torus(5, 10, 50)),
+    ("torus_sector", lambda v: v.make_torus(5, 10, 50, 0, 90)),
+    ("para", lambda v: v.make_parallelepiped(30, 40, 60, 10, 20, 5)),
+    ("para_zero_shear", lambda v: v.make_parallelepiped(30, 40, 60, 0, 0, 0)),
+    ("cut_tube_flat", lambda v: v.make_cut_tube(5, 10, 20, 0, 360, (0, 0, -1), (0, 0, 1))),
+    ("cut_tube_slant", lambda v: v.make_cut_tube(0, 10, 20, 0, 360, (0, -0.7, -0.7), (0.7, 0, 0.7))),
+    ("elliptical_tube", lambda v: v.make_elliptical_tube(10, 20, 40)),
+    ("ellipsoid", lambda v: v.make_ellipsoid(10, 20, 30)),
+    ("polyhedra", lambda v: v.make_polyhedra(6, zplane=[-50, 50], iradius=[0, 0], oradius=[40, 40])),
+])
+def test_pyvista_new_solids_build_nonempty_mesh(name, build):
+    import pyvista as pv
+
+    configuration = FakeConfiguration(verbosity=0)
+    configuration.pv = pv
+    volume = GVolume(name)
+    build(volume)
+
+    mesh, _ = pyvista_api._build_volume_mesh(volume, configuration)
+
+    assert mesh is not None
+    assert mesh.n_points > 0
+    assert mesh.n_cells > 0
+
+
+def test_pyvista_cut_tube_flat_matches_plain_tube_volume():
+    import pyvista as pv
+
+    configuration = FakeConfiguration(verbosity=0)
+    configuration.pv = pv
+    volume = GVolume("cut_tube")
+    # Flat cuts (normals along ±z) reduce a G4CutTubs to a plain hollow G4Tubs.
+    volume.make_cut_tube(5, 10, 20, 0, 360, (0, 0, -1), (0, 0, 1))
+
+    mesh, _ = pyvista_api._build_volume_mesh(volume, configuration)
+
+    expected_volume = np.pi * (10**2 - 5**2) * (2 * 20)
+    assert mesh.n_open_edges == 0
+    assert mesh.volume == pytest.approx(expected_volume, rel=0.01)
+
+
 def test_pyvista_boolean_accepts_ellipsoid_operand(monkeypatch):
     import pyvista as pv
 

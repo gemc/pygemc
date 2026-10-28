@@ -91,6 +91,79 @@ def test_geometry_builders_use_the_configured_value_formatter():
     assert volume.position == "0.3*mm, 0*mm, 0*mm"
 
 
+def test_make_torus_sets_geant4_constructor_parameters():
+    volume = GVolume("ring")
+
+    volume.make_torus(0, 10, 50)
+
+    assert volume.solid == "G4Torus"
+    assert volume.parameters == "0*mm, 10*mm, 50*mm, 0*deg, 360*deg"
+
+
+def test_make_parallelepiped_sets_geant4_constructor_parameters():
+    volume = GVolume("para")
+
+    volume.make_parallelepiped(30, 40, 60, 10, 20, 5)
+
+    assert volume.solid == "G4Para"
+    assert volume.parameters == "30*mm, 40*mm, 60*mm, 10*deg, 20*deg, 5*deg"
+
+
+def test_make_cut_tube_stores_normals_with_count_units():
+    volume = GVolume("cut_tube")
+
+    volume.make_cut_tube(5, 10, 20, 0, 360, (0, -0.7, -0.7), (0.7, 0, 0.7))
+
+    assert volume.solid == "G4CutTubs"
+    assert volume.parameters == (
+        "5*mm, 10*mm, 20*mm, 0*deg, 360*deg, "
+        "0*counts, -0.7*counts, -0.7*counts, 0.7*counts, 0*counts, 0.7*counts"
+    )
+
+
+def test_make_cut_tube_rejects_wrong_normal_length():
+    volume = GVolume("cut_tube")
+
+    with pytest.raises(ValueError, match="3-component"):
+        volume.make_cut_tube(5, 10, 20, 0, 360, (0, -1), (0, 0, 1))
+
+
+def test_make_elliptical_tube_sets_geant4_constructor_parameters():
+    volume = GVolume("etube")
+
+    volume.make_elliptical_tube(10, 20, 40)
+
+    assert volume.solid == "G4EllipticalTube"
+    assert volume.parameters == "10*mm, 20*mm, 40*mm"
+
+
+def test_make_ellipsoid_sets_geant4_constructor_parameters():
+    volume = GVolume("egg")
+
+    volume.make_ellipsoid(10, 20, 30)
+
+    assert volume.solid == "G4Ellipsoid"
+    assert volume.parameters == "10*mm, 20*mm, 30*mm, 0*mm, 0*mm"
+
+
+def test_make_polyhedra_uses_count_units_and_radius_then_zplane_order():
+    volume = GVolume("pgon")
+
+    volume.make_polyhedra(6, zplane=[-50, 50], iradius=[0, 0], oradius=[40, 40])
+
+    assert volume.solid == "G4Polyhedra"
+    assert volume.parameters == (
+        "0*deg, 360*deg, 6*counts, 2*counts, 0*mm, 0*mm, 40*mm, 40*mm, -50*mm, 50*mm"
+    )
+
+
+def test_make_polyhedra_rejects_mismatched_arrays():
+    volume = GVolume("pgon")
+
+    with pytest.raises(ValueError, match="array lengths do not match"):
+        volume.make_polyhedra(6, zplane=[-50, 50], iradius=[0], oradius=[40, 40])
+
+
 def test_make_polycone_uses_defaults_and_count_units():
     volume = GVolume("polycone")
 
@@ -201,7 +274,7 @@ def test_write_replacement_geometry(per_solid_dirs, solid, pars):
 
 
 # Stacking two @parametrize decorators creates the Cartesian product:
-# 6 solids × 2 formats = 12 tests — all sharing the same pre-built per_solid_dirs.
+# one test per (solid, format) pair — all sharing the same pre-built per_solid_dirs.
 @pytest.mark.parametrize("solid", SOLIDS)
 @pytest.mark.parametrize("fmt", ["ascii", "sqlite"])
 def test_build_geometry_per_solid(per_solid_dirs, solid, fmt):

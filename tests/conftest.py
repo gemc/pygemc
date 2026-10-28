@@ -16,10 +16,16 @@ CLI = "gemc-system-template"
 SOLIDS = {
     "G4Box":     "10 10 10 cm",
     "G4Tubs":    "0,20,40,0,360 cm deg",
+    "G4CutTubs": "5 10 20 0 360 0 -0.7 -0.7 0 0.7 0.7 cm deg",
     "G4Cons":    "10 20 30 40 10 0 360 cm deg",
+    "G4Para":    "30 40 60 10 20 5 cm deg",
     "G4Trd":     "30 10 40 15 60 cm",
     "G4TrapRAW": "10 20 30 40",
     "G4TrapG":   "60 20 5 40 30 40 10 16 10 14 10 cm deg",
+    "G4Torus":   "0 10 50 0 360 cm deg",
+    "G4Polyhedra": "6 0 360 2 0 0 40 40 -50 50 cm deg",
+    "G4EllipticalTube": "10 20 40 cm",
+    "G4Ellipsoid": "10 20 30 cm",
     "G4Paraboloid": "40 5 80 cm",
 }
 

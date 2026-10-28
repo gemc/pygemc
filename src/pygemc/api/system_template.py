@@ -355,6 +355,125 @@ def log_gvolume(subroutine_name, silent, write_to, volume_type, parameters: [str
 			volume_definitions.append(
 				f'gvolume.make_paraboloid({parameters[0]}, {parameters[1]}, {parameters[2]}, \'{unit}\')')
 
+	elif volume_type == 'G4CutTubs':
+		# -gvp order: rin rout length phiStart totalPhi lx ly lz hx hy hz [lunit aunit]
+		if parameters is None:
+			volume_definitions.append(
+				'gvolume.make_cut_tube(rin, rout, length, phiStart, totalPhi, '
+				'(lx, ly, lz), (hx, hy, hz)) # default units: mm and degrees')
+		elif len(parameters) >= 11:
+			p = parameters
+			low = f'({p[5]}, {p[6]}, {p[7]})'
+			high = f'({p[8]}, {p[9]}, {p[10]})'
+			units = parameters[11:]
+			unit_args = ''
+			if len(units) == 1:
+				unit_args = f', \'{check_units(units[0])}\''
+			elif len(units) == 2:
+				unit_args = f', \'{check_units(units[0])}\', \'{check_units(units[1])}\''
+			volume_definitions.append(
+				f'gvolume.make_cut_tube({p[0]}, {p[1]}, {p[2]}, {p[3]}, {p[4]}, {low}, {high}{unit_args})')
+
+	elif volume_type == 'G4Para':
+		if parameters is None:
+			volume_definitions.append(
+				'gvolume.make_parallelepiped(dx, dy, dz, alpha, theta, phi) # default units: mm and degrees')
+		elif len(parameters) == 6:
+			volume_definitions.append(
+				f'gvolume.make_parallelepiped({parameters[0]}, {parameters[1]}, {parameters[2]}, '
+				f'{parameters[3]}, {parameters[4]}, {parameters[5]}) # default units: mm and degrees')
+		elif len(parameters) == 7:
+			unit = check_units(parameters[6])
+			volume_definitions.append(
+				f'gvolume.make_parallelepiped({parameters[0]}, {parameters[1]}, {parameters[2]}, '
+				f'{parameters[3]}, {parameters[4]}, {parameters[5]}, \'{unit}\')')
+		elif len(parameters) == 8:
+			unit = check_units(parameters[6])
+			unit2 = check_units(parameters[7])
+			volume_definitions.append(
+				f'gvolume.make_parallelepiped({parameters[0]}, {parameters[1]}, {parameters[2]}, '
+				f'{parameters[3]}, {parameters[4]}, {parameters[5]}, \'{unit}\', \'{unit2}\')')
+
+	elif volume_type == 'G4Torus':
+		if parameters is None:
+			volume_definitions.append(
+				'gvolume.make_torus(rin, rout, rtor, phiStart, totalPhi) # default units: mm and degrees')
+		elif len(parameters) == 5:
+			volume_definitions.append(
+				f'gvolume.make_torus({parameters[0]}, {parameters[1]}, {parameters[2]}, {parameters[3]}, '
+				f'{parameters[4]}) # default units: mm and degrees')
+		elif len(parameters) == 6:
+			unit = check_units(parameters[5])
+			volume_definitions.append(
+				f'gvolume.make_torus({parameters[0]}, {parameters[1]}, {parameters[2]}, {parameters[3]}, '
+				f'{parameters[4]}, \'{unit}\')')
+		elif len(parameters) == 7:
+			unit = check_units(parameters[5])
+			unit2 = check_units(parameters[6])
+			volume_definitions.append(
+				f'gvolume.make_torus({parameters[0]}, {parameters[1]}, {parameters[2]}, {parameters[3]}, '
+				f'{parameters[4]}, \'{unit}\', \'{unit2}\')')
+
+	elif volume_type == 'G4Polyhedra':
+		# -gvp order: nsides phiStart phiTotal nplanes iradius... oradius... zplane... [lunit aunit]
+		if parameters is None:
+			volume_definitions.append(
+				'gvolume.make_polyhedra(nsides, phiStart, phiTotal, zplane=[...], iradius=[...], '
+				'oradius=[...]) # default units: mm and degrees')
+		elif len(parameters) >= 4:
+			nsides = int(parameters[0])
+			phi_start = parameters[1]
+			phi_total = parameters[2]
+			nplanes = int(parameters[3])
+			base = 4
+			iradius = parameters[base:base + nplanes]
+			oradius = parameters[base + nplanes:base + 2 * nplanes]
+			zplane = parameters[base + 2 * nplanes:base + 3 * nplanes]
+			units = parameters[base + 3 * nplanes:]
+			unit_args = ''
+			if len(units) == 1:
+				unit_args = f', lunit1=\'{check_units(units[0])}\''
+			elif len(units) == 2:
+				unit_args = f', lunit1=\'{check_units(units[0])}\', lunit2=\'{check_units(units[1])}\''
+			volume_definitions.append(
+				f'gvolume.make_polyhedra({nsides}, {phi_start}, {phi_total}, '
+				f'zplane=[{", ".join(zplane)}], iradius=[{", ".join(iradius)}], '
+				f'oradius=[{", ".join(oradius)}]{unit_args})')
+
+	elif volume_type == 'G4EllipticalTube':
+		if parameters is None:
+			volume_definitions.append(
+				'gvolume.make_elliptical_tube(dx, dy, dz) # default units: mm.')
+		elif len(parameters) == 3:
+			volume_definitions.append(
+				f'gvolume.make_elliptical_tube({parameters[0]}, {parameters[1]}, {parameters[2]}) '
+				f'# default units: mm.')
+		elif len(parameters) == 4:
+			unit = check_units(parameters[3])
+			volume_definitions.append(
+				f'gvolume.make_elliptical_tube({parameters[0]}, {parameters[1]}, {parameters[2]}, \'{unit}\')')
+
+	elif volume_type == 'G4Ellipsoid':
+		if parameters is None:
+			volume_definitions.append(
+				'gvolume.make_ellipsoid(ax, by, cz, zcut1, zcut2) # default units: mm.')
+		elif len(parameters) == 3:
+			volume_definitions.append(
+				f'gvolume.make_ellipsoid({parameters[0]}, {parameters[1]}, {parameters[2]}) # default units: mm.')
+		elif len(parameters) == 4:
+			unit = check_units(parameters[3])
+			volume_definitions.append(
+				f'gvolume.make_ellipsoid({parameters[0]}, {parameters[1]}, {parameters[2]}, lunit=\'{unit}\')')
+		elif len(parameters) == 5:
+			volume_definitions.append(
+				f'gvolume.make_ellipsoid({parameters[0]}, {parameters[1]}, {parameters[2]}, {parameters[3]}, '
+				f'{parameters[4]}) # default units: mm.')
+		elif len(parameters) == 6:
+			unit = check_units(parameters[5])
+			volume_definitions.append(
+				f'gvolume.make_ellipsoid({parameters[0]}, {parameters[1]}, {parameters[2]}, {parameters[3]}, '
+				f'{parameters[4]}, \'{unit}\')')
+
 	# elif volume_type == 'G4Trap8':
 	else:
 		print(f'\n Fatal error: {volume_type} not supported yet')

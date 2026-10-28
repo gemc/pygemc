@@ -364,7 +364,55 @@ class GVolume:
 		self.parameters = my_dims
 
 	# Cylindrical Cut Section or Cut Tube
-	# def make_cut_tube()
+	def make_cut_tube(self, rin, rout, length, phistart, phitotal, low_norm, high_norm,
+	                  lunit1='mm', lunit2='deg'):
+		"""
+		make_cut_tube(rin, rout, length, phistart, phitotal, low_norm, high_norm,
+		              lunit1='mm', lunit2='deg')
+
+		Creates a geant4 Cylindrical Cut Section or Cut Tube (G4CutTubs): a tube whose
+		two end faces are planes tilted by the given outside normals.
+
+		Parameters
+		----------
+
+		rin : inner radius
+		rout : outer radius
+		length : tube half length in z
+		phistart : starting phi angle
+		phitotal : total phi angle
+		low_norm : outside normal (x, y, z) of the plane cutting the -z face
+		high_norm : outside normal (x, y, z) of the plane cutting the +z face
+		lunit1: length unit (optional; default: mm)
+		lunit2: angle unit (optional; default: deg)
+
+		The two normals are dimensionless direction vectors; they are stored with the
+		`counts` unit so the gemc parser reads them as pure numbers.
+
+		Example
+		-------
+
+		Creates a cut tube with rin=10mm, rout=15mm, length=20mm, phistart=0deg,
+		phitotal=360deg, cut by flat-to-slanted end faces:
+
+		> make_cut_tube(10, 15, 20, 0, 360, (0, -0.7, -0.7), (0.7, 0, 0.7))
+
+		"""
+
+		if len(low_norm) != 3 or len(high_norm) != 3:
+			raise ValueError('G4CutTubs requires 3-component low_norm and high_norm vectors')
+
+		self.solid = 'G4CutTubs'
+		dims = [
+			f'{self._format_value(rin)}*{lunit1}',
+			f'{self._format_value(rout)}*{lunit1}',
+			f'{self._format_value(length)}*{lunit1}',
+			f'{self._format_value(phistart)}*{lunit2}',
+			f'{self._format_value(phitotal)}*{lunit2}',
+		]
+		dims.extend(f'{self._format_value(value)}*counts' for value in low_norm)
+		dims.extend(f'{self._format_value(value)}*counts' for value in high_norm)
+		self.parameters = ', '.join(dims)
 
 	# Cone or Conical section
 	def make_cons(self, rin1, rout1, rin2, rout2, length, phi_start, phi_total, lunit1='mm',
@@ -412,6 +460,47 @@ class GVolume:
 		         + str(phi_start) + '*' + lunit2 + ', ' \
 		         + str(phi_total) + '*' + lunit2
 		self.parameters = mydims
+
+	# Parallelepiped
+	def make_parallelepiped(self, dx, dy, dz, alpha, theta, phi, lunit1='mm', lunit2='deg'):
+		"""
+		make_parallelepiped(dx, dy, dz, alpha, theta, phi, lunit1='mm', lunit2='deg')
+
+		Creates a geant4 Parallelepiped (G4Para)
+
+		Parameters
+		----------
+
+		dx : half length in x
+		dy : half length in y
+		dz : half length in z
+		alpha : angle formed by the y axis and the plane joining the centres of the faces
+		        parallel to the z-x plane at -dy and +dy
+		theta : polar angle of the line joining the centres of the faces at -dz and +dz
+		phi : azimuthal angle of the line joining the centres of the faces at -dz and +dz
+		lunit1: length unit (optional; default: mm)
+		lunit2: angle unit (optional; default: deg)
+
+		Example
+		-------
+
+		Creates a parallelepiped with dx=30mm, dy=40mm, dz=60mm, alpha=10deg, theta=20deg,
+		phi=5deg:
+
+		> make_parallelepiped(30, 40, 60, 10, 20, 5)
+
+		"""
+
+		self.solid = 'G4Para'
+		with_units = [
+			f'{self._format_value(dx)}*{lunit1}',
+			f'{self._format_value(dy)}*{lunit1}',
+			f'{self._format_value(dz)}*{lunit1}',
+			f'{self._format_value(alpha)}*{lunit2}',
+			f'{self._format_value(theta)}*{lunit2}',
+			f'{self._format_value(phi)}*{lunit2}',
+		]
+		self.parameters = ', '.join(with_units)
 
 	# Trapezoid
 	def make_trapezoid(self, dx1, dx2, dy1, dy2, z, lunit='mm'):
@@ -691,7 +780,42 @@ class GVolume:
 		self.parameters = dimensions
 
 	# "G4Orb": "Full Solid Sphere",
-	# "G4Torus": "Torus",
+
+	def make_torus(self, rin, rout, rtor, phistart=0, phitotal=360, lunit1='mm', lunit2='deg'):
+		"""
+		make_torus(rin, rout, rtor, phistart=0, phitotal=360, lunit1='mm', lunit2='deg')
+
+		Creates a geant4 Torus
+
+		Parameters
+		----------
+
+		rin : inner radius of the torus tube
+		rout : outer radius of the torus tube
+		rtor : swept radius of the torus (distance from the z-axis to the tube centre)
+		phistart : starting phi angle (optional; default: 0)
+		phitotal : total phi angle (optional; default: 360)
+		lunit1: length unit (optional; default: mm)
+		lunit2: angle unit (optional; default: deg)
+
+		Example
+		-------
+
+		Creates a torus with rin=0mm, rout=10mm, rtor=50mm, phistart=0deg, phitotal=360deg:
+
+		> make_torus(0, 10, 50)
+
+		"""
+
+		self.solid = 'G4Torus'
+		dims = [
+			f'{self._format_value(rin)}*{lunit1}',
+			f'{self._format_value(rout)}*{lunit1}',
+			f'{self._format_value(rtor)}*{lunit1}',
+			f'{self._format_value(phistart)}*{lunit2}',
+			f'{self._format_value(phitotal)}*{lunit2}',
+		]
+		self.parameters = ', '.join(dims)
 
 	def make_paraboloid(self, dz, r1, r2, lunit='mm'):
 		"""
@@ -758,6 +882,125 @@ class GVolume:
 		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in zplane)
 		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in iradius)
 		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in oradius)
+		self.parameters = ', '.join(parameters)
+
+	def make_elliptical_tube(self, dx, dy, dz, lunit='mm'):
+		"""
+		make_elliptical_tube(dx, dy, dz, lunit='mm')
+
+		Creates a geant4 Elliptical Tube (G4EllipticalTube): a tube whose cross-section is
+		an ellipse with semi-axes dx and dy.
+
+		Parameters
+		----------
+
+		dx : semi-axis of the ellipse in x
+		dy : semi-axis of the ellipse in y
+		dz : tube half length in z
+		lunit: length unit (optional; default: mm)
+
+		Example
+		-------
+
+		Creates an elliptical tube with dx=10mm, dy=20mm, dz=40mm:
+
+		> make_elliptical_tube(10, 20, 40)
+
+		"""
+
+		self.solid = 'G4EllipticalTube'
+		with_units = [
+			f'{self._format_value(dx)}*{lunit}',
+			f'{self._format_value(dy)}*{lunit}',
+			f'{self._format_value(dz)}*{lunit}',
+		]
+		self.parameters = ', '.join(with_units)
+
+	def make_ellipsoid(self, ax, by, cz, zcut1=0, zcut2=0, lunit='mm'):
+		"""
+		make_ellipsoid(ax, by, cz, zcut1=0, zcut2=0, lunit='mm')
+
+		Creates a geant4 General Ellipsoid (G4Ellipsoid) with optional planar z cuts.
+
+		Parameters
+		----------
+
+		ax : semi-axis in x
+		by : semi-axis in y
+		cz : semi-axis in z
+		zcut1 : lower cut plane in z (optional; default: 0 = no cut)
+		zcut2 : upper cut plane in z (optional; default: 0 = no cut)
+		lunit: length unit (optional; default: mm)
+
+		Example
+		-------
+
+		Creates an ellipsoid with ax=10mm, by=20mm, cz=30mm and no z cuts:
+
+		> make_ellipsoid(10, 20, 30)
+
+		"""
+
+		self.solid = 'G4Ellipsoid'
+		with_units = [
+			f'{self._format_value(ax)}*{lunit}',
+			f'{self._format_value(by)}*{lunit}',
+			f'{self._format_value(cz)}*{lunit}',
+			f'{self._format_value(zcut1)}*{lunit}',
+			f'{self._format_value(zcut2)}*{lunit}',
+		]
+		self.parameters = ', '.join(with_units)
+
+	# in polyhedra the radius arrays precede the zplane array, matching the geant4 constructor
+	def make_polyhedra(self, nsides, phiStart=0, phiTotal=360, zplane=None, iradius=None,
+	                   oradius=None, lunit1='mm', lunit2='deg'):
+		"""
+		make_polyhedra(nsides, phiStart=0, phiTotal=360, zplane=None, iradius=None,
+		               oradius=None, lunit1='mm', lunit2='deg')
+
+		Creates a geant4 Polyhedra (G4Polyhedra): a polygonal cross-section extruded along a
+		set of z planes. The inner/outer radii are the tangent distances to the flat faces.
+
+		Parameters
+		----------
+
+		nsides : number of sides of the polygonal cross-section
+		phiStart: starting phi angle (optional; default: 0)
+		phiTotal: total phi angle (optional; default: 360)
+		zplane: required list of z coordinates
+		iradius: required list of inner radii
+		oradius: required list of outer radii
+		lunit1: length unit (optional; default: mm)
+		lunit2: angle unit (optional; default: deg)
+
+		Example
+		-------
+
+		Creates a hexagonal polyhedra with two z planes:
+
+		> make_polyhedra(6, zplane=[-50, 50], iradius=[0, 0], oradius=[40, 40])
+
+		"""
+
+		if zplane is None or iradius is None or oradius is None:
+			raise ValueError('G4Polyhedra requires zplane, iradius, and oradius arrays')
+
+		nplanes = len(zplane)
+		if len(iradius) != nplanes or len(oradius) != nplanes:
+			raise ValueError(
+				'G4Polyhedra array lengths do not match: '
+				f'zplane={len(zplane)}, iradius={len(iradius)}, oradius={len(oradius)}')
+
+		self.solid = 'G4Polyhedra'
+		parameters = [
+			f'{self._format_value(phiStart)}*{lunit2}',
+			f'{self._format_value(phiTotal)}*{lunit2}',
+			f'{nsides}*counts',
+			f'{nplanes}*counts',
+		]
+		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in iradius)
+		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in oradius)
+		parameters.extend(f'{self._format_value(value)}*{lunit1}' for value in zplane)
 		self.parameters = ', '.join(parameters)
 
 
