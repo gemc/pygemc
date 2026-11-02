@@ -125,6 +125,10 @@ class GMaterial():
 
 		# other optical processes
 		self.rayleigh           = NOTASSIGNED
+		self.mie                = NOTASSIGNED
+		self.mieforward         = NOTASSIGNED
+		self.miebackward        = NOTASSIGNED
+		self.mieratio           = NOTASSIGNED
 
 	def check_validity(self):
 		# need to add checking if it's operation instead
@@ -198,7 +202,11 @@ class GMaterial():
 				line += "%10s  |" % ea(self.slowtimeconstant)
 				line += "%10s  |" % ea(self.yieldratio)
 				line += "%10s  |" % ea(self.birksConstant)
-				line += "%30s  |\n" % ea(self.rayleigh)
+				line += "%30s  |" % ea(self.rayleigh)
+				line += "%30s  |" % ea(self.mie)
+				line += "%10s  |" % ea(self.mieforward)
+				line += "%10s  |" % ea(self.miebackward)
+				line += "%10s  |\n" % ea(self.mieratio)
 				dn.write(line)
 
 		elif configuration.factory == 'sqlite':

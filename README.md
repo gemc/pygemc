@@ -211,6 +211,22 @@ gvolume.g4placement_type = "passive"
 This field is written to SQLite geometry databases. Existing SQLite databases are upgraded with the missing
 column when a geometry script publishes new rows.
 
+CAD placements can be published through the same configuration (upcoming in the next release):
+
+```python
+from pygemc import build_cad
+
+build_cad(cfg, "cad/cad_default.gxml", cad_dir="stls", passive=True)
+build_cad(cfg, "stls/cad__default.yaml", passive=True)
+```
+
+The helper accepts GXML, YAML, JSON, or Python placement mappings and uses the configuration's current
+system, variation, run, and output format. It preserves existing banks. Mesh paths and scales, `copyOf`
+placements, materials, optical skins, and readout fields use the same handling as `gemc-sqlite -cad`.
+Use `passive=True` for GEMC2 frame rotations. `defaults` supplies shared volume fields and
+`material_aliases` maps source material names to runtime names. Detector-specific placement calculations
+remain in the detector scripts and can pass their results as a list of mappings.
+
 Common command-line options accepted by geometry scripts:
 
 | Option                       | Purpose                                                                        |

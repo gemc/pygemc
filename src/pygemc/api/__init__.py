@@ -1,5 +1,6 @@
 """pygemc.api — geometry, material, and configuration building blocks."""
 
+from .gcad import build_cad
 from .gvolume import GVolume
 from .gmaterial import GMaterial
 from .gmirrors import GMirror
@@ -11,6 +12,7 @@ from .gcolors import pyvista_color_to_hex
 from .solids_map import AVAILABLE_SOLIDS_MAP
 
 __all__ = [
+    "build_cad",
     "GVolume",
     "GMaterial",
     "GMirror",

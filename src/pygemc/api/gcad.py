@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Purpose:
-#   Upload CAD volume definitions from a single human-authored file (YAML or JSON) into the
+#   Publish CAD placements through a configuration, or upload definitions from YAML or JSON into the
 #   SQLite `geometry` table, so that GEMC3's SQLite factory loads them like any other volume.
 #
 #   This is the modern replacement for the clas12Tags Perl mechanism (GXML.pm / cad.pm /
@@ -41,6 +41,7 @@ import json
 import os
 import sys
 import types
+import xml.etree.ElementTree as ET
 
 # gemc api
 from .gutils import GColors
@@ -69,21 +70,25 @@ _FIELD_MAP = {
 
 
 # --------------------------------------------------------------------------------------------------
-# File loading (YAML or JSON)
+# File loading (GXML, YAML or JSON)
 # --------------------------------------------------------------------------------------------------
 
 def load_cad_document(filename):
-	"""Return the CAD definition file as a Python dict.
+	"""Return a GXML, YAML or JSON CAD definition as a Python dict.
 
 	JSON is parsed with the standard library. YAML is parsed with PyYAML when it is installed;
 	otherwise a small block parser handles the restricted document shape documented at the top of
 	this module (top-level scalars, one `defaults:` mapping, one `volumes:` sequence of mappings).
 	"""
+	filename = os.fspath(filename)
 	try:
 		with open(filename, encoding='utf-8') as stream:
 			text = stream.read()
 	except OSError as e:
 		sys.exit(f"{GColors.RED}Error reading CAD file {filename}: {e}{GColors.END}")
+
+	if filename.lower().endswith(('.gxml', '.xml')):
+		return _parse_cad_gxml(text)
 
 	is_json = filename.lower().endswith('.json') or text.lstrip().startswith('{')
 	if is_json:
@@ -97,6 +102,88 @@ def load_cad_document(filename):
 		return yaml.safe_load(text)
 	except ImportError:
 		return _parse_cad_yaml(text)
+
+
+def _parse_cad_gxml(text):
+	"""Translate GEMC2 placement attributes to the CAD document vocabulary."""
+	volumes = []
+	for element in ET.fromstring(text).findall('volume'):
+		entry = dict(element.attrib)
+		# hitType labels the GEMC2 bank; sensitivity selects readout or an optical skin.
+		entry.pop('hitType', None)
+		sensitivity = entry.get('sensitivity', '')
+		if sensitivity.startswith('mirror:'):
+			entry['mirror'] = sensitivity.partition(':')[2].strip()
+			entry.pop('sensitivity')
+			# Optical labels are not readout identifiers.
+			entry.pop('identifiers', None)
+			entry.pop('identifier', None)
+		for field in ('position', 'rotation'):
+			if field in entry:
+				value = entry[field]
+				prefix = ''
+				if field == 'rotation' and value.startswith(('ordered:', 'doubleRotation:')):
+					prefix, _, value = value.partition(':')
+					prefix += ': '
+				entry[field] = prefix + ', '.join(value.replace(',', ' ').split())
+		if 'color' in entry:
+			entry['color'] = entry['color'].lower()
+		for field in ('visible', 'style', 'exist', 'exists'):
+			if field in entry:
+				entry[field] = int(entry[field])
+		if 'opacity' in entry:
+			entry['opacity'] = float(entry['opacity'])
+		volumes.append(entry)
+	return {'defaults': {'rotation': '0*deg, 0*deg, 0*deg'}, 'volumes': volumes}
+
+
+def build_cad(configuration, source, *, cad_dir=None, defaults=None, material_aliases=None,
+			passive=False, warn_missing_meshes=False):
+	"""Publish CAD placements through an existing configuration and return their GVolumes.
+
+	source accepts a GXML/YAML/JSON path, a CAD document mapping, or an iterable of volume
+	mappings. Only listed placements are published. File metadata never changes configuration's
+	experiment, system, variation, run, or output factory, and existing banks are not cleared.
+
+	cad_dir overrides the document's runtime mesh directory (otherwise 'cad'); extension and
+	per-volume file/scale keys describe source meshes. copyOf rows reuse a source solid.
+	defaults override document defaults, while individual entries take precedence over both.
+	material_aliases maps source material names to their runtime equivalents.
+
+	passive=True forces GEMC2 frame rotations for sources and copies; otherwise each volume's
+	g4placement_type is honored, defaulting to GVolume's active convention. Missing meshes may
+	be warned about beside a source file, but are never required during database generation.
+	"""
+	from .gvolume import GVolume
+
+	file_dir = None
+	if isinstance(source, (str, os.PathLike)):
+		doc = load_cad_document(source)
+		if warn_missing_meshes:
+			file_dir = os.path.dirname(os.path.abspath(source))
+	elif isinstance(source, dict):
+		doc = source
+	else:
+		doc = {'volumes': source}
+	if not isinstance(doc, dict):
+		sys.exit(f"{GColors.RED}Error: CAD source did not parse into a mapping.{GColors.END}")
+
+	volume_defaults = {**(doc.get('defaults') or {}), **(defaults or {})}
+	mesh_dir = cad_dir if cad_dir is not None else doc.get('cad_dir', 'cad')
+	extension = str(doc.get('extension', 'stl')).lstrip('.')
+	volumes = []
+	for entry in doc.get('volumes') or []:
+		if not isinstance(entry, dict) or 'name' not in entry:
+			sys.exit(f"{GColors.RED}Error: every CAD volume needs a 'name' (got {entry!r}).{GColors.END}")
+		volume = _build_gvolume(GVolume, entry, volume_defaults, mesh_dir, extension, file_dir)
+		if material_aliases:
+			volume.material = material_aliases.get(volume.material, volume.material)
+		if passive:
+			volume.publish_passive(configuration)
+		else:
+			volume.publish(configuration)
+		volumes.append(volume)
+	return volumes
 
 
 def _strip_inline_comment(line):
@@ -225,7 +312,6 @@ def upload_cad_definitions(cad_file, dbhost, experiment=None, variation=None, ru
 	(experiment, system, variation, run) are cleared first, matching the SQLite publish semantics.
 	"""
 	import sqlite3
-	from .gvolume import GVolume
 	from .gsqlite import create_sqlite_database
 
 	doc = load_cad_document(cad_file)
@@ -239,9 +325,6 @@ def upload_cad_definitions(cad_file, dbhost, experiment=None, variation=None, ru
 	experiment = experiment or doc.get('experiment') or system
 	variation = variation or doc.get('variation') or 'default'
 	run = run if run is not None else doc.get('run', 1)
-	cad_dir = doc.get('cad_dir', 'cad')
-	extension = str(doc.get('extension', 'stl')).lstrip('.')
-	defaults = doc.get('defaults') or {}
 	volumes = doc.get('volumes') or []
 
 	if not volumes:
@@ -250,16 +333,10 @@ def upload_cad_definitions(cad_file, dbhost, experiment=None, variation=None, ru
 	cfg = _upload_configuration(dbhost, experiment, system, variation, run, sqlite3,
 	                            create_sqlite_database)
 
-	file_dir = os.path.dirname(os.path.abspath(cad_file))
-
 	print(f"  {GColors.BOLD}CAD upload{GColors.END} from {cad_file}")
 	print(f"    experiment: {experiment}, system: {system}, variation: {variation}, run: {run}")
 
-	for entry in volumes:
-		if not isinstance(entry, dict) or 'name' not in entry:
-			sys.exit(f"{GColors.RED}Error: every volume entry needs a 'name' (got {entry!r}).{GColors.END}")
-		gvolume = _build_gvolume(GVolume, entry, defaults, cad_dir, extension, file_dir)
-		gvolume.publish(cfg)
+	for gvolume in build_cad(cfg, cad_file, warn_missing_meshes=True):
 		if verbosity > 0:
 			target = gvolume.parameters.split(',', 1)[0] if gvolume.solid == 'CAD' else gvolume.copyOf
 			print(f"    + {gvolume.name:<24} -> {target}")
@@ -315,15 +392,14 @@ def _build_gvolume(GVolume, entry, defaults, cad_dir, extension, file_dir):
 	# NOT be solid="CAD" (else the CAD factory would look for a mesh named after it). The g4 CAD
 	# builder resolves the copy against the named source volume (same system).
 	copy_of = merged.pop('copyOf', None)
+	scale = merged.pop('scale', None)
+	filename = merged.pop('file', f"{name}.{extension}")
 	if copy_of is not None:
 		gvolume.copyOf = str(copy_of)
 	else:
 		# Mark as a CAD import. The parameters column carries the runtime mesh path and uniform scale:
 		# "<path>, <scale>". This keeps description available for normal descriptive text.
 		gvolume.solid = 'CAD'
-		scale = merged.pop('scale', None)
-
-		filename = merged.pop('file', f"{name}.{extension}")
 		# Runtime path, resolved by GEMC relative to the system directory (e.g. "stls/htccCone.stl").
 		mesh_path = os.path.join(cad_dir, filename)
 		if ',' in mesh_path:
@@ -334,8 +410,8 @@ def _build_gvolume(GVolume, entry, defaults, cad_dir, extension, file_dir):
 
 		# Warn (do not fail) when the mesh is not found next to the definition file: the database may
 		# be built on a different machine than the one that runs GEMC.
-		local_mesh = os.path.join(file_dir, filename)
-		if not os.path.exists(local_mesh):
+		local_mesh = os.path.join(file_dir, filename) if file_dir is not None else None
+		if local_mesh is not None and not os.path.exists(local_mesh):
 			print(f"  {GColors.YELLOW}Warning:{GColors.END} mesh not found next to definition file: {local_mesh}")
 
 	rotation = merged.pop('rotation', None)

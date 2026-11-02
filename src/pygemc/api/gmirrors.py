@@ -149,7 +149,8 @@ class GMirror():
 			         + ': set matOptProps or photonEnergy with the properties tables')
 		if self.matOptProps is NOTASSIGNED:
 			if (self.indexOfRefraction is NOTASSIGNED and self.reflectivity is NOTASSIGNED
-					and self.efficiency is NOTASSIGNED):
+					and self.efficiency is NOTASSIGNED
+					and not (self.type == "dielectric_dielectric" and self.sigmaAlpha is not NOTASSIGNED)):
 				sys.exit(' Error: photonEnergy is defined for GMirror ' + str(self.name)
 				         + ' but no property (indexOfRefraction, reflectivity, efficiency) is')
 

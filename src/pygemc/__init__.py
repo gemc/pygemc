@@ -1,6 +1,7 @@
 """pygemc — Python API for GEMC geometry definition and output analysis."""
 
 from .api import (
+    build_cad,
     GVolume,
     GMaterial,
     GMirror,
@@ -19,6 +20,7 @@ from .api import (
 _ANALYZER_NAMES = {"GemcOutput", "available_variables", "plot_variable", "read_output"}
 
 __all__ = [
+    "build_cad",
     "GVolume",
     "GMaterial",
     "GMirror",
