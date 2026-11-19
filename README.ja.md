@@ -4,70 +4,89 @@
 
 # pygemc
 
-[![テスト][tests-badge]][tests]
+[![Tests][tests-badge]][tests]
 [![Python][python-badge]][pyproject]
 [![PyPI][pypi-badge]][pypi]
-[![ライセンス: Apache-2.0][license-badge]][license]
-[![GEMC ドキュメント][docs-badge]][docs]
-[![Docker プル数][dockerhub-badge]][dockerhub]
+[![License: Apache-2.0][license-badge]][license]
+[![GEMC documentation][docs-badge]][docs]
+[![Docker Pulls][dockerhub-badge]][dockerhub]
 
-`pygemc` は、検出器のジオメトリ、材料、光学特性、ミラー、および軽量な出力解析ワークフローを定義するために
-[GEMC](https://github.com/gemc/src) が使用する Python API です。ユーザーは Python スクリプトで GEMC データベースを
-構築し、PyVista でジオメトリをプレビューし、C++ を書くことなく GEMC の CSV または ROOT 出力を調べられます。
+`pygemc` は、[GEMC](https://github.com/gemc/src) が検出器のジオメトリ、材料、光学特性、ミラー、
+および軽量な出力解析ワークフローを定義するために使用する Python API です。Python スクリプトで GEMC データベースを構築し、
+PyVista でジオメトリをプレビューし、C++ を書くことなく GEMC の CSV または ROOT 出力を調べることができます。
 
 このパッケージは pip で、または GEMC のソースビルドの一部としてインストールできます。また、
-[Docker Hub](https://hub.docker.com/r/gemc/gemc)（および `ghcr.io/gemc/src`）で提供される GEMC Docker イメージに
-プリインストールされています。
+[Docker Hub](https://hub.docker.com/r/gemc/gemc)（および `ghcr.io/gemc/src`）の GEMC Docker イメージにもプリインストールされています。
 
 ## 機能
 
-- GEMC ジオメトリおよび材料データベース用の Python クラス
-- 直方体、円筒、円錐、台形などの一般的な Geant4 ソリッド向けの `GVolume` ヘルパー
-- `G4Transform3D` の能動変換または受動変換のコンストラクタを選択する `GVolume.g4placement_type`
-- 化学式、質量分率による混合物、および光学／シンチレーション特性のための `GMaterial` ヘルパー
+- GEMC のジオメトリおよび材料データベース向けの Python クラス
+- ボックス、チューブ、円錐、台形など、一般的な Geant4 ソリッド向けの `GVolume` ヘルパー
+- `G4Transform3D` の能動または受動の配置コンストラクタを選択する `GVolume.g4placement_type`
+- 化学式、質量分率による混合物、光学特性やシンチレーション特性を扱う `GMaterial` ヘルパー
 - `GConfiguration` によるラン、バリエーション、ファクトリ、SQLite、ASCII、PyVista の設定管理
 - 検出器スクリプトのセットアップを簡単にする `autogeometry()`
-- SQLite および ASCII データベース出力
-- ジオメトリの確認とドキュメント作成のための PyVista レンダリング、対話型 Qt 表示、VTK.js `.vtksz` エクスポート
+- SQLite および ASCII 形式のデータベース出力
+- ジオメトリの確認とドキュメント作成のための PyVista レンダリング、対話型の Qt 表示、VTK.js `.vtksz` エクスポート
 - すぐに実行できる検出器システムを生成する `gemc-system-template` CLI
-- サポートされている Geant4 ソリッドコンストラクタ用の Python コードスニペット
-- GEMC SQLite データベースファイルを作成・検査する `gemc-sqlite` CLI
-- Geant4 のテッセレーションソリッド用に CAD メッシュ（STL/PLY/OBJ）を簡略化・修復する `gemc-cure-mesh` CLI
+- サポートされている Geant4 ソリッドコンストラクタの Python コードスニペット
+- GEMC SQLite データベースファイルを作成・確認する `gemc-sqlite` CLI
+- Geant4 のテッセレーションソリッド向けに CAD メッシュ（STL/PLY/OBJ）を簡略化・修復する `gemc-cure-mesh` CLI
 - GEMC の CSV または ROOT 出力を要約・プロットする `gemc-analyzer` CLI
 - 長さ、角度、時間、エネルギーを表す文字列の単位変換ヘルパー
-- コンパイル済みの `gemc` バイナリを必要としない Pytest スイート
+- コンパイル済みの `gemc` バイナリを必要としない Pytest テストスイート
 
 <br/>
 
 # インストール
 
-## PyPI からの安定版インストール
+pygemc には次の 2 つのインストールモードがあります。用途に応じて選択してください。
 
-`pip` で直接インストールする場合は Python 仮想環境を使用してください。
-Homebrew を使う macOS では、正しいインタプリタが使われるように `/opt/homebrew/bin/python3` を使用します:
+- **`latest`** — PyPI で公開されているリリース。デフォルトであり、ほとんどのユーザーに適しています。
+- **`dev`** — このソースツリーの編集可能インストール。pygemc 自体の開発やテスト用です。
+
+仮想環境で実行する `pip` コマンドによって、モードを選択します。
 
 ```shell
-/opt/homebrew/bin/python3 -m venv ~/venv/pygemc
+python -m pip install pygemc        # latest: the stable release from PyPI
+python -m pip install -e ".[dev]"   # dev: editable checkout, run from the repository root
+```
+
+[安定版 PyPI インストール](#stable-pypi-install-latest)と[テスト](#tests)の各セクションで、それぞれの方法を詳しく説明します。
+
+## 安定版 PyPI インストール（`latest`）
+
+`pip` で直接インストールする場合は、仮想環境で Python 3.10〜3.14 を使用してください。バージョンの上限制約は
+次のリリースで導入予定です。`pymeshlab` は引き続き必須の依存パッケージです。
+Homebrew を使う macOS では、Python 3.14 を明示的にインストールして選択します。
+
+```shell
+brew install python@3.14
+/opt/homebrew/bin/python3.14 -m venv ~/venv/pygemc
 source ~/venv/pygemc/bin/activate
 python -m pip install --upgrade pip
 ```
 
-[PyPI の `pygemc`](https://pypi.org/project/pygemc/) を次のコマンドでインストールします:
+次のコマンドで [PyPI の `pygemc`](https://pypi.org/project/pygemc/) をインストールします。
 
 ```shell
 python -m pip install pygemc
 ```
-ROOT ファイル解析用の追加依存パッケージ（任意）:
+ROOT ファイルの解析に必要なオプションの依存パッケージ:
 
 ```shell
 python -m pip install "pygemc[root]"
 ```
 
 
-## GEMC と一緒にインストール
+## GEMC と一緒にインストールする
 
-GEMC をソースからビルドすると、アクティベーション手順や個別の pip インストールなしでスクリプトから pygemc を
-利用でき、gemc と Python ツールも使えるようになります:
+次のリリースで追加予定: pygemc が GEMC と CLAS12 システムの Python 環境を管理します。
+pygemc の meson サブプロジェクトが Python 3.10〜3.14 を選択し、ビルド環境を作成して、
+pygemc とその依存パッケージを `<prefix>/python_env` 以下にインストールするフックを登録します。
+GEMC と CLAS12 システムは、どちらもエクスポートされたビルド用インタプリタを使用します。
+
+`<prefix>/bin` と `<prefix>/python_env/bin` を `PATH` に追加すると、GEMC と Python ツールが利用可能になります。
 
 ```shell
 gemc -v
@@ -80,7 +99,7 @@ gemc-analyzer --help
 
 # クイックスタート
 
-検出器テンプレートを作成します:
+検出器テンプレートを作成します。
 
 ```shell
 gemc-system-template -s counter
@@ -88,66 +107,66 @@ cd counter
 ./counter.py
 ```
 
-生成されるシステムには次が含まれます:
+生成されるシステムには以下が含まれます。
 
 | ファイル       | 用途                                         |
 | -------------- | -------------------------------------------- |
-| `counter.py`   | メインのジオメトリ構築スクリプト               |
-| `geometry.py`  | フラックス検出器を含むボリュームの例           |
-| `materials.py` | メタンガス材料の例                            |
-| `counter.yaml` | GEMC ステアリングカード                       |
-| `README.md`    | 生成された検出器の説明を書き込むためのひな形   |
+| `counter.py`   | メインのジオメトリ構築スクリプト             |
+| `geometry.py`  | フラックス検出器を含むボリュームの例         |
+| `materials.py` | メタンガス材料の例                           |
+| `counter.yaml` | GEMC ステアリングカード                      |
+| `README.md`    | 生成された検出器の説明を書き込むための仮のメモ |
 
-PyVista による可視化付きで実行します:
+PyVista による可視化を有効にして実行します。
 
 ```shell
 ./counter.py -pv
 ```
 
-VTK.js シーンをエクスポートします:
+VTK.js シーンをエクスポートします。
 
 ```shell
 ./counter.py -pvvtk counter -pvz 0.25
 ```
 
-ドキュメント用のエクスポートには明るい単色の背景を使用します:
+ドキュメント用にエクスポートする場合は、明るい単色の背景を使用します。
 
 ```shell
 ./counter.py -pvvtk counter -pvbg "0.92 0.92 0.98" -pvbgt none
 ```
 
-コンパイル済みの `gemc` 実行ファイルが利用可能な場合、生成されたシミュレーションを GEMC で実行します:
+コンパイル済みの `gemc` 実行ファイルが利用可能な場合は、生成されたシミュレーションを GEMC で実行します。
 
 ```shell
 gemc counter.yaml
 ```
 
-出力を解析します:
+出力を解析します。
 
 ```shell
 gemc-analyzer counter_t0_digitized.csv totEdep --bins 50
 ```
 
-プロット可能な量は読み込んだファイルの数値列であり、データを読み込んではじめて判明するため、
-`--help` には表示されません。ファイル名だけを指定してアナライザを実行すると、行数・イベント数（取得可能な場合）を
-含む要約と、各ストリームの `plottable <stream>: ...` 一覧が出力されます。
-明示的な `--list` オプションでも同じ要約が出力されます:
+プロット可能な量は読み込んだファイルの数値列であるため、データを読み込むまで確定せず、
+`--help` には表示されません。ファイル名だけを指定して解析ツールを実行すると、取得可能な行数とイベント数、
+各ストリームの `plottable <stream>: ...` リストを含む要約が出力されます。
+明示的に `--list` オプションを指定しても、同じ要約が出力されます。
 
 ```shell
 gemc-analyzer counter_t0_digitized.csv
 gemc-analyzer counter_t0_digitized.csv --list
 ```
 
-次のリリースで提供予定: `pid`、`opid`、および現在と元の運動量成分を含む真値情報 CSV ファイルでは、
-`delta_p`、`delta_theta`、`delta_phi` が利用できるようになります。`pid` が `opid` と一致する行のみがこれらの
-プロットの対象となり、`delta_phi` は区間 [-pi, pi] に収まるよう周期的に折り返されます。`--pid` で粒子種を 1 つ選択します。
+次のリリースで追加予定: `pid`、`opid`、現在と元の運動量成分を含む真値情報の CSV ファイルでは、
+`delta_p`、`delta_theta`、`delta_phi` をプロットできます。これらのプロットには、`pid` が `opid` と一致する行のみが
+含まれ、`delta_phi` は区間 [-pi, pi] に折り返されます。`--pid` で特定の粒子種を選択できます。
 例: `gemc-analyzer hits_true_info.csv delta_p --pid 11`。
 
 <br/>
 
 # ジオメトリ API
 
-一般的なジオメトリスクリプトでは、設定を作成し、その設定にボリュームや材料を登録します:
+一般的なジオメトリスクリプトでは、設定を作成し、その設定に対してボリュームや材料を登録します。
 
 ```python
 from pygemc import GMaterial, GVolume, autogeometry
@@ -173,48 +192,64 @@ flux.set_identifier("box", 2)
 flux.publish(cfg)
 ```
 
-## 配置の規約
+## 配置規約
 
-`GVolume.g4placement_type` は、GEMC がボリュームに使用する Geant4 の配置規約を選択します:
+`GVolume.g4placement_type` は、GEMC がボリュームに使用する Geant4 の配置規約を選択します。
 
 | 値        | 意味                                                                                     |
 | --------- | ---------------------------------------------------------------------------------------- |
-| `active`  | デフォルト。`G4Transform3D(rotation, translation)` を使用                                 |
-| `passive` | `G4PVPlacement(rotation, translation, ...)` を使用し、GEMC2/clas12Tags の規約に一致       |
+| `active`  | デフォルト。`G4Transform3D(rotation, translation)` を使用                                |
+| `passive` | `G4PVPlacement(rotation, translation, ...)` を使用。GEMC2/clas12Tags の規約に一致        |
 
-新しい GEMC3 ジオメトリのほとんどは、デフォルトの `active` 規約を使用できます。GEMC2 から移植された検出器システムで
-座標系の回転に依存する場合は、次のように設定してください:
+新規に作成する GEMC3 ジオメトリの多くは、デフォルトの `active` 規約を使用できます。座標系の回転に依存する、
+GEMC2 から移植した検出器システムでは、次のように設定してください。
 
 ```python
 gvolume.g4placement_type = "passive"
 ```
 
-このフィールドは SQLite ジオメトリデータベースに書き込まれます。既存の SQLite データベースには、ジオメトリ
-スクリプトが新しい行を登録する際に不足している列が追加され、更新されます。
+このフィールドは SQLite ジオメトリデータベースに書き込まれます。既存の SQLite データベースでは、
+ジオメトリスクリプトが新しい行を登録する際に、不足している列が追加されます。
+
+CAD の配置も同じ設定を通じて登録できます（次のリリースで追加予定）。
+
+```python
+from pygemc import build_cad
+
+build_cad(cfg, "cad/cad_default.gxml", cad_dir="stls", passive=True)
+build_cad(cfg, "stls/cad__default.yaml", passive=True)
+```
+
+このヘルパーは GXML、YAML、JSON、または Python の配置マッピングを受け付け、設定の現在の
+システム、バリエーション、ラン、出力形式を使用します。既存のバンクは保持されます。メッシュのパスとスケール、`copyOf`
+による配置、材料、光学スキン、読み出しフィールドは、`gemc-sqlite -cad` と同じ方法で処理されます。
+GEMC2 の座標系の回転には `passive=True` を使用します。`defaults` は共通のボリュームフィールドを指定し、
+`material_aliases` はソースの材料名を実行時の名前にマッピングします。検出器固有の配置計算は
+引き続き検出器スクリプト内で行い、その結果をマッピングのリストとして渡すことができます。
 
 ジオメトリスクリプトが受け付ける一般的なコマンドラインオプション:
 
 | オプション                   | 用途                                                                           |
 |------------------------------|--------------------------------------------------------------------------------|
-| `-f`, `--factory`            | `sqlite` または `ascii` の出力を選択                                           |
-| `-v`, `--variation`          | ジオメトリのバリエーションを選択                                               |
+| `-f`, `--factory`            | `sqlite` または `ascii` 出力を選択                                             |
+| `-v`, `--variation`          | ジオメトリのバリエーションを選択                                              |
 | `-r`, `--run`                | ラン番号を選択                                                                 |
 | `-sql`, `--dbhost`           | SQLite ファイルのパスを選択                                                    |
 | `-pv`                        | PyVista ウィンドウを表示                                                       |
-| `-pvb`                       | PyVistaQt のバックグラウンドプロッターを表示                                    |
+| `-pvb`                       | PyVistaQt バックグラウンドプロッターを表示                                     |
 | `-pvvtk`                     | VTK.js `.vtksz` シーンをエクスポート                                           |
 | `-pvz`                       | VTK.js エクスポートのズームを設定                                              |
-| `--pyvista-variation NAME`   | PyVista で 1 つのバリエーションのみを描画。既定は最初に描画されるバリエーション |
-| `--pyvista-fast`             | 大規模ジオメトリの描画を高速化するため PyVista ボリュームを少数のアクターにまとめる |
+| `--pyvista-variation NAME`   | PyVista で 1 つのバリエーションのみを描画。デフォルトは最初に描画されるもの |
+| `--pyvista-fast`             | PyVista のボリュームを少数のアクターにまとめ、大規模ジオメトリの描画を高速化 |
 | `--no-pyvista-fast`          | PyVista の自動バッチ処理を無効化                                               |
-| `--pyvista-fast-threshold N` | 描画されるボリューム数が `N` を超えると PyVista のバッチ処理を自動で有効化       |
-| `-pvbg`                      | PyVista の背景色を名前、16 進文字列、または `r g b` の 3 値で設定               |
-| `-pvbgt`                     | PyVista の背景グラデーションの上部の色を任意で設定。単色の背景には `none` を使用 |
-| `--read-yaml`                | GEMC YAML から `g4camera` の方向と `g4view.background` の設定を読み込む         |
+| `--pyvista-fast-threshold N` | 描画されるボリューム数が `N` を超えると PyVista のバッチ処理を自動的に有効化 |
+| `-pvbg`                      | PyVista の背景色を名前、16 進数文字列、または `r g b` の 3 成分で設定       |
+| `-pvbgt`                     | PyVista の背景グラデーションの上端色を任意に設定。単色の背景には `none` を指定 |
+| `--read-yaml`                | GEMC YAML から `g4camera` の方向と `g4view.background` の設定を読み込む      |
 
 ## PyVista による可視化
 
-PyVista サポートは `pygemc` の中核をなす機能です。ジオメトリスクリプトで検出器を構築しながら表示したり、
+PyVista のサポートは `pygemc` の中心的な機能です。ジオメトリスクリプトでは、検出器を構築しながら表示したり、
 対話型の Qt ビューアを開いたり、ドキュメントで公開できる `.vtksz` シーンをエクスポートしたりできます。
 
 <table>
@@ -256,7 +291,7 @@ PyVista サポートは `pygemc` の中核をなす機能です。ジオメト�
   </tr>
 </table>
 
-リンクを開くと、GEMC のサンプルから生成された対話型の PyVista シーンを表示できます。
+リンクを開くと、GEMC の例から生成された対話型の PyVista シーンを表示できます。
 
 GitHub の README ページには `.vtksz` ファイルを直接埋め込めないため、プレビュー画像から公開済みの VTK.js ビューアにリンクしています。
 
@@ -302,11 +337,11 @@ GitHub の README ページには `.vtksz` ファイルを直接埋め込めな�
       <td>
         <code>gemc-sqlite -sql mydetector.sqlite -sv -ef examples -vf default -sf counter -rf 1</code>
       </td>
-      <td>一覧表示するボリュームを実験、バリエーション、システム、ラン番号で絞り込みます。</td>
+      <td>一覧表示するボリュームを、実験、バリエーション、システム、ラン番号で絞り込みます。</td>
     </tr>
     <tr style="background-color: #f6f8fa;">
       <td><code>gemc-cure-mesh organ.stl -o organ.stl -f 15000</code></td>
-      <td>Geant4 用に CAD メッシュを簡略化・修復します（約 1 万 5 千面への削減、頂点の結合、穴埋め、面の向きの修正）。</td>
+      <td>Geant4 向けに CAD メッシュを簡略化・修復します（約 1.5 万面に削減、頂点の結合、穴埋め、面の向きの修正）。</td>
     </tr>
     <tr style="background-color: #f6f8fa;">
       <td><code>gemc-analyzer counter_t0_digitized.csv</code></td>
@@ -314,7 +349,7 @@ GitHub の README ページには `.vtksz` ファイルを直接埋め込めな�
     </tr>
     <tr>
       <td><code>gemc-analyzer counter_t0_digitized.csv totEdep --bins 50</code></td>
-      <td>デジタイズ後の変数を 50 ビンでプロットします。</td>
+      <td>デジタイズされた変数を 50 ビンでプロットします。</td>
     </tr>
     <tr style="background-color: #f6f8fa;">
       <td>
@@ -326,14 +361,23 @@ GitHub の README ページには `.vtksz` ファイルを直接埋め込めな�
     </tr>
     <tr>
       <td><code>gemc-analyzer out.root E --detector flux --save energy.png</code></td>
-      <td>GUI を開かずに、ROOT データに基づくアナライザの図を保存します。</td>
+      <td>GUI を開かずに、ROOT データを解析した図を保存します。</td>
     </tr>
   </tbody>
 </table>
 
 ## テスト
 
-スタンドアロンの Python テストを実行します:
+パッケージを開発用依存パッケージ（`pytest`、
+`pytest-cov`、`ruff`）とともに、編集可能モード（`dev` インストールモード）でインストールします。
+これにより、`pytest` は以前にインストールした PyPI の wheel ではなく、ソースツリー内の `src/pygemc` をインポートします。
+そうしないと、インストール済みの wheel が優先され、テストの収集に失敗します。
+
+```shell
+python -m pip install -e ".[dev]"
+```
+
+その後、単独で実行できる Python テストを実行します。
 
 ```shell
 pytest
@@ -345,21 +389,21 @@ pytest -v
 pytest -k "sqlite"
 ```
 
-これらのテストは、アナライザのプロット、CLI の動作、YAML に基づく PyVista 設定、ジオメトリデータベースの
-生成を検証します。Geant4 やコンパイル済みの `gemc` 実行ファイルを必要としないように設計されています。
-完全なシミュレーションテストは、親 GEMC の Meson ビルドに含まれています。
+これらのテストは、解析ツールのプロット、CLI の動作、YAML による PyVista 設定、ジオメトリデータベースの生成を
+検証します。Geant4 やコンパイル済みの `gemc` 実行ファイルを必要としない設計になっています。完全なシミュレーションテストは、
+親プロジェクトである GEMC の meson ビルドに含まれています。
 
 ## プロジェクト構成
 
 | パス                   | 用途                                                                      |
 | ---------------------- | ------------------------------------------------------------------------- |
-| `src/pygemc/api/`      | ジオメトリ、材料、単位、SQLite 出力、PyVista サポート、およびテンプレート    |
-| `src/pygemc/analyzer/` | CSV/ROOT リーダー、プロット、およびアナライザ CLI                           |
-| `tests/`               | スタンドアロンの pytest スイート                                           |
-| `.github/workflows/`   | CI、リリース、PyPI 公開、および GEMC 統合ワークフロー                       |
+| `src/pygemc/api/`      | ジオメトリ、材料、単位、SQLite 出力、PyVista サポート、テンプレート        |
+| `src/pygemc/analyzer/` | CSV/ROOT リーダー、プロット、解析 CLI                                      |
+| `tests/`               | 単独で実行できる pytest テストスイート                                    |
+| `.github/workflows/`   | CI、リリース、PyPI 公開、GEMC 統合の各ワークフロー                         |
 | `releases/`            | リリースノート                                                            |
-| `pyproject.toml`       | Python パッケージングのメタデータとコンソールスクリプト                     |
-| `meson.build`          | GEMC が使用する Meson サブプロジェクト統合                                 |
+| `pyproject.toml`       | Python パッケージングのメタデータとコンソールスクリプト                    |
+| `meson.build`          | GEMC が使用する meson サブプロジェクト統合                                 |
 
 ## ドキュメント
 
@@ -369,22 +413,22 @@ pytest -k "sqlite"
 - [クイックスタート](https://gemc.github.io/home/documentation/quickstart/)
 - [サンプル](https://gemc.github.io/home/examples/)
 - [GEMC ソースリポジトリ](https://github.com/gemc/src)
-- [CLAS12 GEMC システムリポジトリ](https://github.com/gemc/clas12-systems)
-- [ドキュメントウェブサイトリポジトリ](https://github.com/gemc/home)
+- [CLAS12 GEMC システムのリポジトリ](https://github.com/gemc/clas12-systems)
+- [ドキュメントウェブサイトのリポジトリ](https://github.com/gemc/home)
 - [GEMC2 / CLAS12 リポジトリ](https://github.com/gemc/clas12Tags)
 
 ## コントリビューション
 
-パッチは変更の範囲を絞り、プルリクエストを作成する前に関連する pytest ターゲットを実行してください。変更が GEMC の統合ビルドに影響する場合は、影響を受けるサンプルやモジュールについて、親リポジトリの Meson テストも実行してください。
+パッチは対象を絞り、プルリクエストを作成する前に関連する pytest ターゲットを実行してください。変更が GEMC との統合ビルドに影響する場合は、影響を受けるサンプルやモジュールについて、親リポジトリの meson テストも実行してください。
 
 ## ライセンス
 
-`pygemc` は、メインの GEMC ソースリポジトリと同じ [Apache License, Version 2.0](LICENSE) の下で
-提供されています。著作権者などの帰属情報については [`NOTICE`](NOTICE) を参照してください。
+`pygemc` は、メインの GEMC ソースリポジトリと同じ [Apache ライセンス、バージョン 2.0](LICENSE) の下で
+提供されています。著作権などの帰属表示については [`NOTICE`](NOTICE) を参照してください。
 
 [tests]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml
 [tests-badge]: https://github.com/gemc/pygemc/actions/workflows/pygemc_tests.yml/badge.svg
-[python-badge]: https://img.shields.io/badge/python-3.10%2B-blue.svg
+[python-badge]: https://img.shields.io/badge/python-3.10%E2%80%933.14-blue.svg
 [pypi]: https://pypi.org/project/pygemc/
 [pypi-badge]: https://img.shields.io/pypi/v/pygemc.svg?cacheSeconds=300
 [license]: LICENSE

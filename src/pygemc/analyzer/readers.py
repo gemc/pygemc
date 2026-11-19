@@ -74,7 +74,9 @@ def read_root_output(path: str | Path) -> GemcOutput:
 	"""Read GEMC ROOT output through uproot.
 
 	Detector trees named ``true_info_<detector>`` and ``digitized_<detector>``
-	are flattened so each vector element becomes one DataFrame row.
+	are flattened so each vector element becomes one DataFrame row. The
+	entry-level ``g4localEventNumber`` and ``threadID`` metadata are repeated
+	for every hit row in that entry.
 	"""
 
 	path = Path(path)
@@ -220,7 +222,10 @@ def _tree_to_frame(tree: Any) -> pd.DataFrame:
 		for row_index in range(row_count):
 			row = {}
 			for name, values in entry_columns.items():
-				row[name] = values[row_index] if row_index < len(values) else None
+				if name in ("g4localEventNumber", "threadID") and len(values) == 1:
+					row[name] = values[0]
+				else:
+					row[name] = values[row_index] if row_index < len(values) else None
 			rows.append(row)
 
 	return pd.DataFrame(rows)
